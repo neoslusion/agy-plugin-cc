@@ -1,0 +1,6 @@
+{
+  "name": "gemini",
+  "version": "0.1.0",
+  "description": "Delegate tasks to the local Google gemini CLI from Claude Code.",
+  "author": { "name": "ducle" }
+}
