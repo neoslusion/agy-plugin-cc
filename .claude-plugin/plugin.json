@@ -1,6 +1,6 @@
 {
-  "name": "gemini",
-  "version": "0.1.0",
-  "description": "Delegate tasks to the local Google gemini CLI from Claude Code.",
+  "name": "agy",
+  "version": "0.3.0",
+  "description": "Delegate tasks, plan execution, and code reviews to the local Antigravity (agy) CLI from Claude Code. Background jobs, session hooks, a fail-open stop-review gate, and a rescue subagent.",
   "author": { "name": "ducle" }
 }

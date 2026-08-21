@@ -1,2 +1,5 @@
 .in_use
 *.log
+node_modules/
+.npm/
+scratch/

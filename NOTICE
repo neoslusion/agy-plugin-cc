@@ -1,0 +1,12 @@
+# NOTICE
+
+This plugin wraps the official Google Antigravity CLI (`agy`) and performs no
+OAuth of its own and stores no credentials. Authentication is handled entirely
+by the `agy` binary (Google sign-in / AI credits).
+
+- The plugin's job logs may contain the prompts delegated to agy and agy's
+  outputs. Do not delegate prompts that contain secrets.
+- The stop-review gate is a best-effort heuristic and fails OPEN (allows
+  stopping) on any timeout or parse error.
+- Review runs are read-only: the companion never passes
+  `--dangerously-skip-permissions` for review/adversarial-review jobs.
