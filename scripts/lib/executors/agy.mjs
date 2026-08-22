@@ -8,7 +8,38 @@ export const binary = 'agy';
 
 export const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const PROBE_TIMEOUT_MS = 60 * 1000;
-const NOTICE_MARKERS = ['auto-denied', 'permission that headless mode cannot prompt'];
+const NOTICE_MARKERS = [
+  'auto-denied',
+  'permission that headless mode cannot prompt',
+  // agy >= 1.1.x wording
+  'soft-denying tool confirmation',
+];
+
+// Matches both the hard envelope error ("permission check failed for command ...")
+// and soft-deny notices emitted by headless runs.
+export const PERMISSION_DENIED_RE =
+  /permission check failed|user denied permission|soft-denying tool confirmation|auto-denied/i;
+
+export function isPermissionDenied(result = {}) {
+  const hay = [result.error, result.notice, result.response].filter(Boolean).join('\n');
+  return PERMISSION_DENIED_RE.test(hay);
+}
+
+// Returns a human hint for permission denials, or null when nothing actionable applies.
+// Task/plan jobs without approval can be re-run with --approve-all; reviews are
+// read-only by design; an approved run that still gets denied points at scope/policy.
+export function permissionDeniedHint(result = {}, { jobClass, approveAll } = {}) {
+  if (!isPermissionDenied(result)) return null;
+  if (jobClass === 'review') {
+    return 'review runs are read-only by design; denials mean the prompt asked for out-of-scope tools.';
+  }
+  if (!approveAll) {
+    return 'headless mode denies tools that need approval (every shell command, even read-only ones). '
+      + 'Re-run with --approve-all to allow them (maps to agy --dangerously-skip-permissions).';
+  }
+  return 'this run had --approve-all yet tools were still denied; the tool likely touched resources '
+      + 'outside the trusted workspace (use --add-dir) or hit an admin permission policy.';
+}
 
 export function msToDuration(ms) {
   const totalS = Math.max(0, Math.round(ms / 1000));
@@ -288,4 +319,6 @@ export const agyExecutor = {
   collectContext,
   runTask,
   cancel: cancelJob,
+  isPermissionDenied,
+  permissionDeniedHint,
 };

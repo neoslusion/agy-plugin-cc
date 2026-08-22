@@ -85,5 +85,30 @@ export function renderResult(result) {
     }
     return lines.join('\n');
   }
+  // Task/plan executor results: surface what a reviewer actually needs instead
+  // of dumping the internal envelope.
+  if (typeof result === 'object' && ('response' in result || 'error' in result || 'notice' in result)) {
+    const lines = [];
+    if (result.status) lines.push(`Status: ${result.status}${result.agyStatus ? ` (agy: ${result.agyStatus})` : ''}`);
+    if (result.response && String(result.response).trim()) {
+      lines.push('', 'Response:', '', String(result.response).trimEnd());
+    } else {
+      lines.push('', 'Response: (none)');
+    }
+    if (result.notice) lines.push('', `Notice: ${result.notice}`);
+    if (result.error) lines.push('', `Error: ${result.error}`);
+    if (Array.isArray(result.changedFiles) && result.changedFiles.length) {
+      lines.push('', 'Changed files:', '');
+      for (const f of result.changedFiles) lines.push(`- ${f}`);
+    } else {
+      lines.push('', 'Changed files: (none)');
+    }
+    if (Array.isArray(result.phasesSeen) && result.phasesSeen.length) {
+      lines.push('', `Phases: ${result.phasesSeen.join(' → ')}`);
+    }
+    if (result.conversationId) lines.push('', `Conversation: \`${result.conversationId}\``);
+    if (result.subagentsInvoked) lines.push(`Subagents invoked: ${result.subagentsInvoked}`);
+    return lines.join('\n');
+  }
   return JSON.stringify(result, null, 2);
 }

@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- Fix: permission denials now surface an actionable hint. A failed task whose
+  error matches agy's denial wording (`permission check failed`, `soft-denying
+  tool confirmation`) prints `hint: ... --approve-all` on stderr; a soft-denied
+  "success" (exit 0, empty output) gets the same hint. Runs already launched
+  with `--approve-all` are pointed at `--add-dir`/admin policy instead.
+- Fix: failure lines report the real agy envelope status (e.g.
+  `agy task failed (ERROR): ...`) instead of the misleading wrapper status
+  (`agy task failed (completed): ...`).
+- Fix: prompting docs no longer claim read-only shell commands are auto-allowed
+  in headless mode. Verified against agy 1.1.17: *every* shell command requires
+  approval; only built-in file reads/edits inside trusted workspaces bypass the
+  gate. Delegated prompts now instruct agy to use file tools instead of shell
+  discovery commands.
+- Investigated finer-grained alternatives to `--dangerously-skip-permissions`
+  on agy 1.1.17 and found them unusable headless on Windows: PreToolUse allow
+  hooks fire after the permission gate, `toolPermission=always-proceed` hangs
+  print mode, and `proceed-in-sandbox` fails ("context canceled").
+  `--approve-all` remains the only working path for shell-capable tasks.
+- Fix: `/agy:result` now renders task/plan results for review — verbatim
+  response, changed files, phases, conversation id, and error/notice sections —
+  instead of dumping the raw executor envelope (usage counters included).
+- Approval no longer needs to be typed every time. `task`/`plan` now resolve
+  `approveAll` in order: explicit flag > live Claude session mode (the
+  SessionStart hook exports `AGY_APPROVE_ALL=1` when the session runs in
+  bypassPermissions) > plugin config (`setup --enable-approve-all`, persisted
+  per workspace) > Claude settings (`permissions.defaultMode:
+  bypassPermissions`, honoring `CLAUDE_CONFIG_DIR`) > off. New
+  `--no-approve-all` flag force-denies regardless of inheritance; `/agy:task`
+  asks once via AskUserQuestion when nothing decides. `acceptEdits`
+  deliberately does not inherit — it only auto-accepts file edits, not shell
+  commands.
 - Fix: background job launches no longer block the parent process (the
   detached worker's stdio pipes kept the parent alive until the job finished).
 - Fix: hook scripts no longer hang on real sessions where stdin never closes

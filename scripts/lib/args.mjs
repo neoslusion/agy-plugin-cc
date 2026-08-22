@@ -7,6 +7,8 @@ export const BOOL_FLAGS = new Set([
   'json',
   'enable-review-gate',
   'disable-review-gate',
+  'enable-approve-all',
+  'disable-approve-all',
   'approve-all',
 ]);
 
@@ -44,6 +46,11 @@ export function parseArgs(argv, { extraBool = [], extraValue = [] } = {}) {
           throw new Error(`flag --${name} does not take a value`);
         }
         opts[name] = inlineValue !== null ? inlineValue === 'true' : true;
+      } else if (name.startsWith('no-') && bools.has(name.slice(3))) {
+        if (inlineValue !== null) {
+          throw new Error(`flag --${name} does not take a value`);
+        }
+        opts[name.slice(3)] = false;
       } else if (values.has(name)) {
         opts[name] = inlineValue ?? argv[++i];
         if (opts[name] === undefined) throw new Error(`flag --${name} requires a value`);

@@ -14,6 +14,14 @@ Core constraint:
 - This command is a thin passthrough. Do not rewrite the user's task or add instructions.
 - Return the companion command's stdout verbatim.
 
+Approval policy (checked before running):
+- If `$ARGUMENTS` contains `--approve-all` or `--no-approve-all`, pass it through unchanged.
+- Otherwise, ask the user once (AskUserQuestion) whether agy may act autonomously
+  for this task. If yes, append `--approve-all` to the command. If no, run without it —
+  permission-denied output will include a hint.
+- Note: approval is auto-granted when this Claude session runs in bypassPermissions
+  mode or Claude settings set `permissions.defaultMode: bypassPermissions`.
+
 Execution:
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/agy-companion.mjs" task "$ARGUMENTS"

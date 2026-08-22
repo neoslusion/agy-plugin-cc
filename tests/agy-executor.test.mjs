@@ -14,6 +14,8 @@ import {
   cancelJob,
   extractNotice,
   collectContext,
+  isPermissionDenied,
+  permissionDeniedHint,
 } from '../scripts/lib/executors/agy.mjs';
 import { get, list } from '../scripts/lib/executors/registry.mjs';
 
@@ -87,6 +89,24 @@ test('registry exposes the agy adapter', () => {
   assert.equal(get('agy').binary, 'agy');
   assert.throws(() => get('nope'), /unknown executor/);
   assert.deepEqual(list(), [{ id: 'agy', binary: 'agy' }]);
+});
+
+test('isPermissionDenied covers envelope errors, notices, and responses', () => {
+  assert.equal(isPermissionDenied({ error: 'permission check failed for command "pwd; ls": user denied permission to run command' }), true);
+  assert.equal(isPermissionDenied({ notice: 'Print mode: soft-denying tool confirmation "RunCommand" at step 3' }), true);
+  assert.equal(isPermissionDenied({ response: 'auto-denied: read_file outside workspace' }), true);
+  assert.equal(isPermissionDenied({ error: 'invalid model selection' }), false);
+  assert.equal(isPermissionDenied({}), false);
+});
+
+test('permissionDeniedHint adapts to job class and approval state', () => {
+  const err = { error: 'permission check failed for command "pwd"' };
+  assert.match(permissionDeniedHint(err, { jobClass: 'task', approveAll: false }), /--approve-all/);
+  const approved = permissionDeniedHint(err, { jobClass: 'task', approveAll: true });
+  assert.doesNotMatch(approved, /Re-run with --approve-all/);
+  assert.match(approved, /--add-dir|admin/);
+  assert.match(permissionDeniedHint(err, { jobClass: 'review' }), /read-only by design/);
+  assert.equal(permissionDeniedHint({ error: 'boom' }, { jobClass: 'task' }), null);
 });
 
 test('preflight reports ready/auth/binary from injected probe', () => {

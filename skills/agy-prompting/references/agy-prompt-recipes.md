@@ -10,7 +10,7 @@ You are debugging a failure in this repository.
 <dig_deeper_nudge>Do not stop at the first plausible cause. Trace the failure back to the root cause and explain why the symptom follows.</dig_deeper_nudge>
 <grounding_rules>Cite exact file paths and line numbers for every claim.</grounding_rules>
 <missing_context_gating>If the failing command or referenced file does not exist, say so. Do not invent details.</missing_context_gating>
-<verification_loop>Run the failing command once to confirm the reproducer before analyzing. You may run read-only commands; interactive approvals are auto-denied.</verification_loop>
+<verification_loop>Run the failing command once to confirm the reproducer before analyzing. Shell commands are approval-gated even when read-only; prefer built-in file tools, and only use command-based verification when the run was launched with --approve-all.</verification_loop>
 <compact_output_contract>Finish with a single "Root cause:" line, then "Evidence:" lines with file:line references.</compact_output_contract>
 ```
 

@@ -48,6 +48,39 @@ test('SessionStart hook exports session env vars to the env file', () => {
   assert.ok(text.includes('CLAUDE_PLUGIN_DATA='));
 });
 
+test('SessionStart exports AGY_APPROVE_ALL only for bypassPermissions sessions', () => {
+  const { dir } = makeRoot();
+  const bypassFile = join(dir, 'env-bypass.txt');
+  runHook('session-lifecycle-hook.mjs', ['SessionStart'], {
+    session_id: 'sess-b',
+    cwd: dir,
+    env_file: bypassFile,
+    permission_mode: 'bypassPermissions',
+  });
+  const bypassText = readFileSync(bypassFile, 'utf8');
+  assert.ok(bypassText.includes('AGY_PERMISSION_MODE=bypassPermissions'));
+  assert.ok(bypassText.includes('AGY_APPROVE_ALL=1'));
+
+  const defaultFile = join(dir, 'env-default.txt');
+  runHook('session-lifecycle-hook.mjs', ['SessionStart'], {
+    session_id: 'sess-d',
+    cwd: dir,
+    env_file: defaultFile,
+    permission_mode: 'default',
+  });
+  const defaultText = readFileSync(defaultFile, 'utf8');
+  assert.ok(defaultText.includes('AGY_PERMISSION_MODE=default'));
+  assert.ok(!defaultText.includes('AGY_APPROVE_ALL'));
+
+  const legacyFile = join(dir, 'env-legacy.txt');
+  runHook('session-lifecycle-hook.mjs', ['SessionStart'], {
+    session_id: 'sess-l',
+    cwd: dir,
+    env_file: legacyFile,
+  });
+  assert.ok(!readFileSync(legacyFile, 'utf8').includes('AGY_APPROVE_ALL'));
+});
+
 test('SessionEnd hook cancels orphaned jobs for the session', async () => {
   const { dir, root } = makeRoot();
   const job = { id: 'task-hook-1', executor: 'agy', sessionId: 'sess-end', status: 'running', phase: 'acting', pid: 999999, updatedAt: new Date().toISOString(), kind: 'task' };

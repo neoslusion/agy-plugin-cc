@@ -86,10 +86,13 @@ Allowed vs forbidden operations. Be explicit.
 
 ## `<tool_persistence_rules>`
 
-Headless-mode tool reality: interactive approvals are auto-denied.
+Headless-mode tool reality: interactive approvals are auto-denied. Every shell
+command is gated — even read-only ones (`pwd`, `ls`, `git status`) — unless the
+run was launched with `--approve-all`. Only built-in file reads/edits inside a
+trusted workspace are auto-allowed.
 
 ```
-<tool_persistence_rules>You cannot be prompted for permission. If a command requires approval it will be denied; prefer read-only commands and file edits inside the workspace, which are auto-allowed.</tool_persistence_rules>
+<tool_persistence_rules>You cannot be prompted for permission. Shell commands require approval even when read-only and will be denied; do not run shell commands for discovery — use built-in file tools inside the workspace instead. If a shell command is essential to the task, stop and report that the task must be launched with --approve-all.</tool_persistence_rules>
 ```
 
 ## `<research_mode>`

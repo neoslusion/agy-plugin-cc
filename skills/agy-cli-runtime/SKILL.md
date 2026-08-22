@@ -25,7 +25,7 @@ Internal contract for the agy executor runtime. Scoped exclusively to the `agy:a
 | `--model <slug>` | Pin a model. Valid slugs come from `agy models` (e.g. `gemini-3.5-flash-medium`, `claude-sonnet-4-6`). Unknown slugs make agy fail loudly with exit 1. |
 | `--effort low\|medium\|high` | Reasoning effort. |
 | `--agent <name>` | Select an agy agent (list with `agy agents`). |
-| `--approve-all` | Opt a single write-capable run into `--dangerously-skip-permissions`. Never used by default; never passed for reviews. |
+| `--approve-all` | Opt a single write-capable run into `--dangerously-skip-permissions`. Never used by default; never passed for reviews. Without it, headless runs deny **every** shell command (even read-only) — trusted workspaces only auto-allow built-in file reads/edits. |
 
 Note: `--background` and `--wait` flags removed. Harness manages background execution via `run_in_background` parameter on tool calls.
 

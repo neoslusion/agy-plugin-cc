@@ -40,7 +40,9 @@ function context(dataRoot, env = {}) {
   const errLines = [];
   return {
     cwd: dataRoot,
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGY_SESSION_ID: 'sess-1', ...env },
+    // CLAUDE_CONFIG_DIR keeps settings-scan approval hermetic regardless of the
+    // real user-level Claude settings on this machine.
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGY_SESSION_ID: 'sess-1', CLAUDE_CONFIG_DIR: join(dataRoot, '.claude-config'), ...env },
     out: { write: (s) => outLines.push(s) },
     err: { write: (s) => errLines.push(s) },
     outLines,
@@ -117,6 +119,47 @@ test('task --wait failed run exits 1 with error on stderr', async () => {
   assert.equal(listJobs(ctx.root)[0].status, 'failed');
 });
 
+const PERM_ERROR = 'permission check failed for command "pwd; ls": user denied permission to run command: pwd; ls';
+
+test('permission-denied failure reports agy status and an --approve-all hint', async () => {
+  calls = [];
+  stubRunTask({ status: 'failed', agyStatus: 'ERROR', response: '', error: PERM_ERROR });
+  const root = freshRoot();
+  const ctx = context(root);
+  const code = await runMain(['task', 'run pwd', '--wait'], ctx);
+  assert.equal(code, 1);
+  const failureLine = ctx.errLines.find((l) => l.includes('agy task failed'));
+  assert.ok(failureLine, 'expected a failure line');
+  assert.ok(failureLine.includes('(ERROR)'), `expected agy status in line: ${failureLine}`);
+  assert.ok(!failureLine.includes('(completed)'));
+  assert.ok(listJobs(ctx.root)[0].errorMessage.includes('permission check failed'));
+  const hintLine = ctx.errLines.find((l) => l.startsWith('hint:'));
+  assert.ok(hintLine && hintLine.includes('--approve-all'), `expected approve-all hint, got: ${hintLine}`);
+});
+
+test('permission-denied failure with --approve-all already set suggests scope instead', async () => {
+  calls = [];
+  stubRunTask({ status: 'failed', agyStatus: 'ERROR', response: '', error: 'user denied permission for read_file(C:/outside/file.txt)' });
+  const root = freshRoot();
+  const ctx = context(root);
+  await runMain(['task', 'run pwd', '--wait', '--approve-all'], ctx);
+  const hintLine = ctx.errLines.find((l) => l.startsWith('hint:'));
+  assert.ok(hintLine, 'expected a hint line');
+  assert.ok(!hintLine.includes('Re-run with --approve-all'));
+  assert.ok(hintLine.includes('--add-dir') || hintLine.includes('admin'));
+});
+
+test('soft-denied success (exit 0, empty output, notice) also gets the hint', async () => {
+  calls = [];
+  stubRunTask({ status: 'completed', agyStatus: 'SUCCESS', response: '', notice: 'auto-denied RunCommand: requires approval that headless mode cannot prompt' });
+  const root = freshRoot();
+  const ctx = context(root);
+  const code = await runMain(['task', 'silent deny', '--wait'], ctx);
+  assert.equal(code, 0);
+  const hintLine = ctx.errLines.find((l) => l.startsWith('hint:'));
+  assert.ok(hintLine && hintLine.includes('--approve-all'), `expected approve-all hint, got: ${hintLine}`);
+});
+
 test('task --background is no longer supported (harness handles it)', async () => {
   calls = [];
   stubRunTask();
@@ -159,6 +202,51 @@ test('task honors model/effort/agent/approve-all passthrough', async () => {
   assert.equal(calls[0].options.effort, 'high');
   assert.equal(calls[0].options.agent, 'coder');
   assert.equal(calls[0].options.approveAll, true);
+});
+
+test('approval inherits from AGY_APPROVE_ALL session env without the flag', async () => {
+  calls = [];
+  stubRunTask();
+  const root = freshRoot();
+  const ctx = context(root, { AGY_APPROVE_ALL: '1' });
+  await runMain(['task', 'inherit me', '--wait'], ctx);
+  assert.equal(calls[0].options.approveAll, true);
+});
+
+test('--no-approve-all overrides inherited approval', async () => {
+  calls = [];
+  stubRunTask();
+  const root = freshRoot();
+  const ctx = context(root, { AGY_APPROVE_ALL: '1' });
+  await runMain(['task', 'deny me', '--wait', '--no-approve-all'], ctx);
+  assert.equal(calls[0].options.approveAll, false);
+});
+
+test('setup --enable-approve-all persists and grants task approval without flags', async () => {
+  calls = [];
+  stubRunTask();
+  const root = freshRoot();
+  await runMain(['setup', '--enable-approve-all'], context(root));
+  const ctx = context(root);
+  await runMain(['task', 'auto approved', '--wait'], ctx);
+  assert.equal(calls[0].options.approveAll, true);
+
+  calls = [];
+  const ctx2 = context(root);
+  await runMain(['setup', '--disable-approve-all'], ctx2);
+  const ctx3 = context(root);
+  await runMain(['task', 'back to gated', '--wait'], ctx3);
+  assert.equal(calls[0].options.approveAll, false);
+});
+
+test('explicit --no-approve-all overrides persisted approve-all config', async () => {
+  calls = [];
+  stubRunTask();
+  const root = freshRoot();
+  await runMain(['setup', '--enable-approve-all'], context(root));
+  const ctx = context(root);
+  await runMain(['task', 'one-off deny', '--wait', '--no-approve-all'], ctx);
+  assert.equal(calls[0].options.approveAll, false);
 });
 
 test('plan with a fixture plan file renders the template with PLAN_TEXT', async () => {
@@ -251,6 +339,42 @@ test('result prints rendered job detail', async () => {
   const code = await runMain(['result', '--json', ...prefixOf(r)], r);
   assert.equal(code, 0);
   assert.equal(JSON.parse(r.outLines[0]).result.response, 'PONG\n');
+});
+
+test('result renders task response and changed files for review', async () => {
+  calls = [];
+  stubRunTask({
+    status: 'completed',
+    agyStatus: 'SUCCESS',
+    response: 'Fixed the bug in main.rs.\n',
+    changedFiles: ['src/main.rs', 'src/main_test.rs'],
+    phasesSeen: ['starting', 'acting', 'responding'],
+    conversationId: 'conv-77',
+  });
+  const root = freshRoot();
+  await runMain(['task', 'fix bug', '--wait'], context(root));
+  const r = context(root);
+  const code = await runMain(['result', ...prefixOf(r)], r);
+  assert.equal(code, 0);
+  const out = r.outLines.join('');
+  assert.ok(out.includes('Response:'), `expected Response section:\n${out}`);
+  assert.ok(out.includes('Fixed the bug in main.rs.'));
+  assert.ok(out.includes('Changed files:'));
+  assert.ok(out.includes('- src/main.rs'));
+  assert.ok(!out.includes('"usage"'), 'should not dump internal envelope fields');
+});
+
+test('failed task result surfaces error and empty response for review', async () => {
+  calls = [];
+  stubRunTask({ status: 'failed', agyStatus: 'ERROR', response: '', error: 'boom happened' });
+  const root = freshRoot();
+  await runMain(['task', 'broken', '--wait'], context(root));
+  const r = context(root);
+  await runMain(['result', ...prefixOf(r)], r);
+  const out = r.outLines.join('');
+  assert.ok(out.includes('Status: failed (agy: ERROR)'));
+  assert.ok(out.includes('Error: boom happened'));
+  assert.ok(out.includes('Response: (none)'));
 });
 
 test('cancel requires job to exist (--background removed)', async () => {

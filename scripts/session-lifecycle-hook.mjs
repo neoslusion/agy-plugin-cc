@@ -47,6 +47,10 @@ async function onSessionStart(payload, env) {
     `AGY_SESSION_ID=${payload.session_id}`,
     `AGY_TRANSCRIPT_PATH=${payload.transcript_path ?? ''}`,
     `CLAUDE_PLUGIN_DATA=${env.CLAUDE_PLUGIN_DATA ?? join(tmpdir(), 'agy-companion')}`,
+    ...(payload.permission_mode ? [`AGY_PERMISSION_MODE=${payload.permission_mode}`] : []),
+    // Inherit agy approval from the live session: bypassPermissions means the
+    // user already granted full autonomy to Claude itself.
+    ...(payload.permission_mode === 'bypassPermissions' ? ['AGY_APPROVE_ALL=1'] : []),
   ];
   appendFileSync(envFile, lines.join('\n') + '\n');
 }

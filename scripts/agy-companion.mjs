@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
+import { resolveApproveAll } from './lib/approval.mjs';
 import { loadPrompt, renderPrompt } from './lib/prompts.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
 import {
@@ -80,8 +81,8 @@ function usage() {
   return [
     'usage: agy-companion.mjs <subcommand> [options]',
     '',
-    '  setup [--json] [--enable-review-gate|--disable-review-gate]',
-    '  task <prompt> [--resume|--fresh] [--model M] [--effort E] [--agent A] [--conversation ID] [--approve-all] [--timeout-ms N]',
+    '  setup [--json] [--enable-review-gate|--disable-review-gate] [--enable-approve-all|--disable-approve-all]',
+    '  task <prompt> [--resume|--fresh] [--model M] [--effort E] [--agent A] [--conversation ID] [--approve-all|--no-approve-all] [--timeout-ms N]',
     '  plan [<plan-file|text>] [--resume|--fresh]',
     '  review [--base REF] [--scope auto|working-tree|branch]',
     '  adversarial-review [<focus>] [--base REF] [--scope auto|working-tree|branch]',
@@ -97,10 +98,15 @@ async function cmdSetup(argv, ctx) {
   if (opts['enable-review-gate'] && opts['disable-review-gate']) {
     throw new Error('cannot enable and disable the review gate at once');
   }
+  if (opts['enable-approve-all'] && opts['disable-approve-all']) {
+    throw new Error('cannot enable and disable approve-all at once');
+  }
   if (opts['enable-review-gate']) setConfig(ctx.root, { stopReviewGate: true });
   if (opts['disable-review-gate']) setConfig(ctx.root, { stopReviewGate: false });
+  if (opts['enable-approve-all']) setConfig(ctx.root, { approveAll: true });
+  if (opts['disable-approve-all']) setConfig(ctx.root, { approveAll: false });
   const pre = get('agy').preflight({ cwd: ctx.cwd });
-  const report = { ...pre, stopReviewGate: getConfig(ctx.root).stopReviewGate };
+  const report = { ...pre, stopReviewGate: getConfig(ctx.root).stopReviewGate, approveAll: getConfig(ctx.root).approveAll === true };
   if (opts.json) {
     write(ctx.out, JSON.stringify(report));
   } else {
@@ -108,18 +114,24 @@ async function cmdSetup(argv, ctx) {
     write(ctx.out, `  binary: ${report.binary}${report.version ? ` (v${report.version})` : ''}`);
     write(ctx.out, `  auth: ${report.auth}`);
     write(ctx.out, `  stop-review-gate: ${report.stopReviewGate}`);
+    write(ctx.out, `  approve-all: ${report.approveAll} (task/plan jobs auto-approve agy tools)`);
     if (report.hint) write(ctx.out, `  hint: ${report.hint}`);
   }
   return report.ready ? 0 : 1;
 }
 
-function runOptions(opts, extra = {}) {
+function runOptions(opts, ctx, extra = {}) {
   return {
     model: opts.model,
     effort: opts.effort,
     agent: opts.agent,
     conversation: extra.conversation ?? opts.conversation ?? null,
-    approveAll: Boolean(opts['approve-all']),
+    approveAll: resolveApproveAll({
+      explicit: opts['approve-all'],
+      config: getConfig(ctx.root).approveAll === true,
+      cwd: ctx.cwd,
+      env: ctx.env,
+    }),
     jsonSchema: extra.schemaPath ?? opts['json-schema'] ?? null,
     outputFormat: 'stream-json',
     timeoutMs: toNumber(opts['timeout-ms'], undefined),
@@ -164,7 +176,7 @@ async function runForeground(ctx, job, opts, extra = {}) {
     run: async (progress) => {
       const handlers = buildProgressHandlers(ctx, job, progress);
       const result = await get('agy').runTask(
-        { job, prompt: job.request, options: runOptions(opts, extra), ...handlers },
+        { job, prompt: job.request, options: runOptions(opts, ctx, extra), ...handlers },
         { cwd: job.workspaceRoot ?? ctx.cwd }
       );
       progress.update({ conversationId: result.conversationId });
@@ -181,20 +193,27 @@ async function runForeground(ctx, job, opts, extra = {}) {
     if (res.response) ctx.out.write(res.response);
     if (res.notice) {
       write(ctx.err, `notice: ${res.notice}`);
-      if (!res.response) write(ctx.err, 'agy produced no output (tool permissions were denied in headless mode).');
+      if (!res.response) {
+        write(ctx.err, 'agy produced no output (tool permissions were denied in headless mode).');
+        const softHint = get('agy').permissionDeniedHint?.(res, { jobClass: job.jobClass, approveAll: Boolean(opts['approve-all']) });
+        if (softHint) write(ctx.err, `hint: ${softHint}`);
+      }
     }
     if (!res.response && !res.notice) write(ctx.err, 'agy produced no output.');
     return 0;
   }
+  const reason = final.errorMessage ?? res.error ?? 'unknown error';
   upsertJob(ctx.root, {
     ...final,
     status: res.status === 'cancelled' ? 'cancelled' : 'failed',
     phase: res.status === 'cancelled' ? 'cancelled' : 'failed',
     completedAt: isoNow(),
     exitCode: res.exitCode ?? 1,
-    errorMessage: res.error ?? res.notice ?? 'agy run did not complete',
+    errorMessage: reason,
   });
-  write(ctx.err, `agy task failed (${final.status}): ${final.errorMessage ?? res.error ?? 'unknown error'}`);
+  write(ctx.err, `agy ${job.kind} failed (${res.agyStatus ?? final.status}): ${reason}`);
+  const hint = get('agy').permissionDeniedHint?.(res, { jobClass: job.jobClass, approveAll: Boolean(opts['approve-all']) });
+  if (hint) write(ctx.err, `hint: ${hint}`);
   if (res.notice) write(ctx.err, `notice: ${res.notice}`);
   return 1;
 }
