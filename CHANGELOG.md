@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-08-22)
 
 - Fix: permission denials now surface an actionable hint. A failed task whose
   error matches agy's denial wording (`permission check failed`, `soft-denying

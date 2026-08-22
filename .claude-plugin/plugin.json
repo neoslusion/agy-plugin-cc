@@ -1,6 +1,6 @@
 {
   "name": "agy",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Delegate tasks, plan execution, and code reviews to the local Antigravity (agy) CLI from Claude Code. Background jobs, session hooks, a fail-open stop-review gate, and a rescue subagent.",
   "author": { "name": "ducle" }
 }
