@@ -40,36 +40,34 @@ Plus `SessionStart`/`SessionEnd` hooks and an opt-in **stop-review gate** (fails
 From a terminal (not inside Claude Code):
 
 ```bash
-claude plugin marketplace add /path/to/gemini-plugin-cc
+git clone https://github.com/neoslusion/agy-plugin-cc
+cd agy-plugin-cc
+node scripts/dev/install.mjs
+```
+
+The installer registers this directory as a marketplace, installs and enables
+the plugin (names are read from `.claude-plugin/*.json`, so it stays correct
+across renames), and tolerates re-runs.
+
+Manual equivalent:
+
+```bash
+claude plugin marketplace add /path/to/agy-plugin-cc
 claude plugin install agy@gemini-plugin-cc
 claude plugin enable agy@gemini-plugin-cc
 ```
 
-Verify: `claude plugin details agy` — should show 9 commands, 1 agent, 3 hooks.  
-Then run `/agy:setup` to confirm the binary and auth are ready.
+Verify anytime with the doctor:
 
-Stop-review gate is off by default. Enable with `/agy:setup --enable-review-gate`.
-
-### New machine / `claude-api` + `claude-sub` profiles
-
-If you use the `claude-api` / `claude-sub` PowerShell launchers (they copy
-`~/.claude/settings.api.json` or `~/.claude/settings.subscription.json` over
-`~/.claude/settings.json` before launching), bootstrap both profile files from
-the shipped templates:
-
-```powershell
-pwsh -File scripts/dev/bootstrap-profiles.ps1
+```bash
+node scripts/dev/install.mjs --check
 ```
 
-- Creates missing profile files; never overwrites existing ones.
-- Derives the enabled-plugin key from `.claude-plugin/plugin.json`, so plugin
-  renames self-heal instead of leaving stale keys behind (the exact failure
-  mode of the v0.3.0 `gemini@` → `agy@` rename).
-- Substitutes `{{HOME}}` in template paths. Auth is never touched — API keys
-  stay in `~/.secrets/claude-api.ps1`.
+Checks marketplace registration, installed version vs manifest, enablement,
+and that the `agy` CLI is on PATH. Then run `/agy:setup` inside Claude Code to
+confirm agy auth.
 
-Note: because the launchers overwrite `settings.json` on every switch, durable
-settings changes belong in the two profile files, not in `settings.json`.
+Stop-review gate is off by default. Enable with `/agy:setup --enable-review-gate`.
 
 ## Development
 

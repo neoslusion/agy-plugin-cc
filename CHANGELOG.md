@@ -23,11 +23,12 @@
 - Fix: `/agy:result` now renders task/plan results for review — verbatim
   response, changed files, phases, conversation id, and error/notice sections —
   instead of dumping the raw executor envelope (usage counters included).
-- New-machine setup: `templates/settings.api.json` /
-  `templates/settings.subscription.json` plus
-  `scripts/dev/bootstrap-profiles.ps1` provision the per-mode settings files
-  used by the `claude-api`/`claude-sub` launchers, deriving the enablement key
-  from the plugin manifest so renames can no longer strand stale keys.
+- Universal installer: `node scripts/dev/install.mjs` registers the directory
+  marketplace, installs and enables the plugin using names read from
+  `.claude-plugin/*.json` (rename-proof), tolerates re-runs, and works on a
+  stock Claude Code setup. `--check` is a doctor that reports marketplace
+  registration, installed version vs manifest, enablement, and `agy` CLI
+  availability without changing anything.
 - Approval no longer needs to be typed every time. `task`/`plan` now resolve
   `approveAll` in order: explicit flag > live Claude session mode (the
   SessionStart hook exports `AGY_APPROVE_ALL=1` when the session runs in
