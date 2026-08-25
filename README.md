@@ -50,6 +50,27 @@ Then run `/agy:setup` to confirm the binary and auth are ready.
 
 Stop-review gate is off by default. Enable with `/agy:setup --enable-review-gate`.
 
+### New machine / `claude-api` + `claude-sub` profiles
+
+If you use the `claude-api` / `claude-sub` PowerShell launchers (they copy
+`~/.claude/settings.api.json` or `~/.claude/settings.subscription.json` over
+`~/.claude/settings.json` before launching), bootstrap both profile files from
+the shipped templates:
+
+```powershell
+pwsh -File scripts/dev/bootstrap-profiles.ps1
+```
+
+- Creates missing profile files; never overwrites existing ones.
+- Derives the enabled-plugin key from `.claude-plugin/plugin.json`, so plugin
+  renames self-heal instead of leaving stale keys behind (the exact failure
+  mode of the v0.3.0 `gemini@` → `agy@` rename).
+- Substitutes `{{HOME}}` in template paths. Auth is never touched — API keys
+  stay in `~/.secrets/claude-api.ps1`.
+
+Note: because the launchers overwrite `settings.json` on every switch, durable
+settings changes belong in the two profile files, not in `settings.json`.
+
 ## Development
 
 ```bash

@@ -23,6 +23,11 @@
 - Fix: `/agy:result` now renders task/plan results for review — verbatim
   response, changed files, phases, conversation id, and error/notice sections —
   instead of dumping the raw executor envelope (usage counters included).
+- New-machine setup: `templates/settings.api.json` /
+  `templates/settings.subscription.json` plus
+  `scripts/dev/bootstrap-profiles.ps1` provision the per-mode settings files
+  used by the `claude-api`/`claude-sub` launchers, deriving the enablement key
+  from the plugin manifest so renames can no longer strand stale keys.
 - Approval no longer needs to be typed every time. `task`/`plan` now resolve
   `approveAll` in order: explicit flag > live Claude session mode (the
   SessionStart hook exports `AGY_APPROVE_ALL=1` when the session runs in
