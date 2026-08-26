@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Fix: the broker now runs one agy child per request instead of a single
+  flight. Concurrent `Agent(subagent_type: "agy:task")` fan-out no longer
+  collides into `-32001 Broker busy` failures, notifications are routed per
+  request, and a disconnecting client kills only its own runs.
+- Broker accepts `--binary` / honors `AGY_BINARY` (node scripts wrapped with
+  the running Node executable), mirroring the executor — enables fully offline
+  testing against the `fake-agy` fixture.
+- Fix: `agy-task` / `agy-plan-phase` subagents no longer hardcode
+  `--approve-all`. Approval follows the standard resolution chain (explicit
+  flag > session mode > plugin config > settings > off); fan-out auto-approval
+  is now an explicit orchestrator choice instead of an accident of routing.
+- Tests: offline broker suite (`tests/broker.test.mjs`) covering concurrent
+  fan-out (asserts overlapping execution windows), stream-json notification
+  forwarding, failure propagation, and unknown-method errors. Ported the root
+  ad-hoc smoke scripts into real suites — `tests/phased-plan.test.mjs`
+  (synthesis gates, abort, failed-phase handling) and
+  `tests/context-transfer.test.mjs` (turn extraction, prompt building,
+  transcript path resolution) — so `npm test` no longer picks up manual
+  scripts that need a live broker.
+
 ## 0.3.1 (2026-08-22)
 
 - Fix: permission denials now surface an actionable hint. A failed task whose

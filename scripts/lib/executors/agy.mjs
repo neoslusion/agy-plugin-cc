@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { binaryAvailable, runCommand } from '../process.mjs';
 import { collectReviewContext, resolveReviewTarget } from '../git.mjs';
+import { AgyBrokerClient } from '../rpc-client.mjs';
+import { ensureBrokerSession, isBrokerAlive, loadBrokerSession } from '../broker-lifecycle.mjs';
+import { resolveClaudeSessionPath, extractClaudeContext, buildContextPrompt } from '../claude-session-transfer.mjs';
 
 export const id = 'agy';
 export const binary = 'agy';
@@ -87,18 +90,49 @@ export function preflight({ cwd, probeCommand = (args) => runCommand(binary, arg
   };
 }
 
-export function collectContext({ cwd, jobClass, base, scope } = {}) {
-  if (jobClass !== 'review' || !cwd) return { promptExtra: null, changedFilesHint: [] };
-  try {
-    const target = resolveReviewTarget(cwd, { base, scope });
-    const ctx = collectReviewContext(cwd, target);
-    return {
-      promptExtra: ctx.mode === 'inline' ? ctx.diff : ctx.guidance,
-      changedFilesHint: ctx.changedFiles,
-    };
-  } catch {
-    return { promptExtra: null, changedFilesHint: [] };
+export function collectContext({ cwd, jobClass, base, scope, taskScope, transcriptPath } = {}) {
+  if (jobClass === 'review' && cwd) {
+    try {
+      const target = resolveReviewTarget(cwd, { base, scope });
+      const ctx = collectReviewContext(cwd, target);
+      return {
+        promptExtra: ctx.mode === 'inline' ? ctx.diff : ctx.guidance,
+        changedFilesHint: ctx.changedFiles,
+      };
+    } catch {
+      return { promptExtra: null, changedFilesHint: [] };
+    }
   }
+
+  // For task/plan execution, collect broader context including Claude session
+  if ((jobClass === 'task' || jobClass === 'plan') && cwd) {
+    try {
+      const gitStatus = runCommand('git', ['status', '--porcelain'], { cwd });
+      const changedFiles = gitStatus.code === 0
+        ? gitStatus.stdout.split('\n').filter(l => l.trim()).map(l => l.slice(3))
+        : [];
+
+      // Extract Claude session context if available
+      let claudeContext = null;
+      if (transcriptPath) {
+        const sessionPath = resolveClaudeSessionPath(cwd, { source: transcriptPath });
+        if (sessionPath) {
+          claudeContext = extractClaudeContext(sessionPath, { maxTurns: 10 });
+        }
+      }
+
+      return {
+        promptExtra: null,
+        changedFilesHint: changedFiles,
+        gitBranch: runCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }).stdout.trim(),
+        claudeContext
+      };
+    } catch {
+      return { promptExtra: null, changedFilesHint: [] };
+    }
+  }
+
+  return { promptExtra: null, changedFilesHint: [] };
 }
 
 function porcelainPaths(cwd) {
@@ -135,7 +169,56 @@ const AGY_STATUS_TO_JOB_STATUS = {
   RUNNING: 'failed',
 };
 
-export function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, onStdoutLine, onStderrLine }, { spawnFn = spawn, cwd } = {}) {
+export async function runTaskViaBroker({ job = {}, prompt, options = {}, onProgress = () => {} }, { cwd } = {}) {
+  const session = await ensureBrokerSession(cwd);
+  const client = await AgyBrokerClient.connect(cwd, { session });
+
+  try {
+    const args = buildArgs({ job, prompt, options });
+    let result = { status: 'pending', response: '', error: null, exitCode: null, notice: null };
+
+    // Set up notification handler for streaming updates
+    client.setNotificationHandler((message) => {
+      if (message.method === 'agy/notification' && message.params) {
+        const evt = message.params;
+
+        if (evt.event === 'step_update' && evt.step_update) {
+          const step = evt.step_update;
+
+          // Emit progress based on step type
+          if (step.step_type === 'tool' && step.state === 'ACTIVE') {
+            onProgress({ type: 'tool', name: step.tool_name, state: step.state });
+          } else if (step.step_type === 'agent_response') {
+            onProgress({ type: 'phase', phase: 'responding' });
+          }
+        }
+      }
+    });
+
+    // Execute via broker
+    const brokerResult = await client.request('agy/run', { args });
+
+    result.exitCode = brokerResult.exitCode ?? null;
+    result.response = brokerResult.stdout ?? '';
+    result.error = brokerResult.stderr ?? null;
+    result.status = brokerResult.status === 'completed' ? 'completed' : 'failed';
+
+    // Extract notice from stderr
+    result.notice = extractNotice(brokerResult.stderr ?? '');
+
+    return result;
+  } finally {
+    await client.close();
+  }
+}
+
+export function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, onStdoutLine, onStderrLine }, { spawnFn = spawn, cwd, useBroker = false } = {}) {
+  // If broker mode is enabled, use broker execution
+  if (useBroker) {
+    return runTaskViaBroker({ job, prompt, options, onProgress }, { cwd });
+  }
+
+  // Otherwise, use direct spawn (existing implementation)
   return new Promise((resolve, reject) => {
     const args = buildArgs({ job, prompt, options });
     const stream = (options.outputFormat ?? 'stream-json') === 'stream-json';

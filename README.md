@@ -1,14 +1,16 @@
 # gemini-plugin-cc
 
-A Claude Code plugin that delegates work to **external agent CLIs** running locally. Claude orchestrates; [Antigravity CLI (`agy`)](https://antigravity.google/download) executes. An executor registry lets other CLIs (codex, etc.) plug in later.
+A Claude Code plugin that delegates work to **agy (Antigravity CLI)** via a persistent broker runtime. Enables real-time progress streaming, context transfer, phased orchestration, and native Agent tool integration for fan-out workflows.
 
 ## Commands
 
 | Command | What it does |
 |---------|-------------|
 | `/agy:setup` | Check agy is installed + authenticated; toggle stop-review gate |
-| `/agy:task` | Run a one-shot task through agy |
+| `/agy:task` | Run a one-shot task through agy (via broker) |
 | `/agy:execute-plan` | Execute a plan file step-by-step with conversation resume |
+| `/agy:phased-plan` | **NEW:** Execute multi-phase plan with Claude synthesis between phases |
+| `/agy:transfer` | **NEW:** Import Claude session context into agy conversation |
 | `/agy:rescue` | Delegate a task via the `agy-rescue` subagent (proactive routing) |
 | `/agy:review` | Read-only code review, schema-enforced verdict |
 | `/agy:adversarial-review` | Skeptical design/security review |
@@ -20,14 +22,39 @@ Plus `SessionStart`/`SessionEnd` hooks and an opt-in **stop-review gate** (fails
 
 ## Architecture
 
-- **One headless agy process per job** — `agy -p ... --output-format stream-json`. No broker, no named pipes. Conversation resume via `--conversation <id>`.
-- **Harness-managed background** — background jobs use `run_in_background: true` on Bash calls so the harness sends a `<task-notification>` on completion. True fan-out: launch multiple agy jobs in parallel without blocking.
-- **Subagent tracking** — `invoke_subagent`/`define_subagent` tool events are detected in the stream and surfaced as named progress entries with counts.
-- **Proactive delegation** — `agy-rescue` agent routes substantial tasks to agy autonomously, without waiting for an explicit user request.
-- **Job store** — per-workspace state under `$CLAUDE_PLUGIN_DATA/state/`: records, logs, phase tracking, 50-job pruning.
-- **Executor registry** — `scripts/lib/executors/`: uniform adapter interface (`preflight`, `runTask`, `cancel`, `collectContext`).
-- **Structured output** — native `agy --json-schema` for reviews and the stop-review gate.
-- **Permission model** — reviews are always read-only; write jobs opt in per-run with `--approve-all`.
+### Broker Runtime (NEW)
+- **Persistent agy broker** — `agy-broker.mjs` runs as a background process, accepting JSON-RPC over named pipe (Windows) / Unix socket
+- **Bidirectional communication** — Real-time streaming of progress notifications (`step_update`, tool calls, agent responses)
+- **Connection pooling** — Multiple Claude sessions can connect to the same broker for resource efficiency
+- **Automatic lifecycle** — Broker starts on first task/plan invocation, stays alive for conversation resume
+
+### Execution Modes
+- **Direct spawn (default)** — Tasks run as headless `agy -p ...` children, one per job. This is naturally concurrent, which is what Agent-tool fan-out needs
+- **Broker mode** — The persistent broker starts on SessionStart (`AGY_USE_BROKER=false` disables it) and executes one agy child per request, so routing jobs through it relays streaming progress without serializing fan-out
+
+### Context Transfer
+- **Claude → agy session import** — Extracts recent turns from Claude transcript and injects as context
+- **Semantic filtering** — Only transfers relevant turns based on task scope
+- **Automatic injection** — `AGY_TRANSCRIPT_PATH` from SessionStart hook enables transparent context flow
+
+### Phased Orchestration
+- **Multi-phase plans** — Break complex work into focused phases with verification gates
+- **Claude-in-the-loop synthesis** — Verify exit criteria and inject insights between phases
+- **Structured handoff** — Schema-enforced outputs enable clean data flow
+- **Adaptive execution** — Abort or pivot based on intermediate results
+
+### Native Agent Integration
+- **Custom subagent types** — `agy:task`, `agy:plan-phase` registered in Agent tool
+- **Fan-out workflows** — Use `Agent(subagent_type: "agy:task", schema: {...})` for parallel execution
+- **Schema-based structured output** — Type-safe results for synthesis
+
+### Core Features (Preserved)
+- **Harness-managed background** — background jobs use `run_in_background: true`
+- **Subagent tracking** — `invoke_subagent`/`define_subagent` tool events detected
+- **Proactive delegation** — `agy-rescue` agent routes substantial tasks autonomously
+- **Job store** — per-workspace state under `$CLAUDE_PLUGIN_DATA/state/`
+- **Executor registry** — uniform adapter interface (`preflight`, `runTask`, `cancel`, `collectContext`)
+- **Permission model** — reviews read-only; write jobs opt in with `--approve-all`
 
 ## Requirements
 
@@ -80,5 +107,5 @@ Unit tests run offline against the `fake-agy` fixture. Integration tests self-sk
 ## Deliberate non-features
 
 - **No session-transcript import** — no agy equivalent of ACP `externalAgentConfig/import`
-- **No broker/socket transport** — agy exposes headless mode only; stateless spawn is simpler
+- **No session protocol (ACP-style transport)** — agy exposes headless mode only; the broker supervises independent stateless spawns (one child per request) rather than speaking a persistent agent protocol
 - **No auto-applying review fixes** — reviews are read-only by design

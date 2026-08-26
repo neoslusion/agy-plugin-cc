@@ -6,6 +6,7 @@ import { resolveStateRoot } from './lib/state.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
 import { listJobs, readJobFile, upsertJob, isoNow } from './lib/state.mjs';
 import { get } from './lib/executors/registry.mjs';
+import { loadBrokerSession, isBrokerAlive, ensureBrokerSession, sendBrokerShutdown } from './lib/broker-lifecycle.mjs';
 
 function readPayload() {
   return new Promise((resolve) => {
@@ -43,6 +44,9 @@ function rootFor(cwd, env) {
 async function onSessionStart(payload, env) {
   const envFile = payload.env_file ?? env.CLAUDE_ENV_FILE;
   if (!envFile || !payload.session_id) return;
+
+  const cwd = payload.cwd ?? process.cwd();
+
   const lines = [
     `AGY_SESSION_ID=${payload.session_id}`,
     `AGY_TRANSCRIPT_PATH=${payload.transcript_path ?? ''}`,
@@ -52,6 +56,25 @@ async function onSessionStart(payload, env) {
     // user already granted full autonomy to Claude itself.
     ...(payload.permission_mode === 'bypassPermissions' ? ['AGY_APPROVE_ALL=1'] : []),
   ];
+
+  // Start broker if enabled and not already running
+  const useBroker = env.AGY_USE_BROKER !== 'false'; // Default to true
+  if (useBroker && cwd) {
+    try {
+      const broker = loadBrokerSession(cwd);
+      if (broker && await isBrokerAlive(broker)) {
+        lines.push(`AGY_BROKER_ENDPOINT=${broker.endpoint}`);
+      } else {
+        // Start new broker
+        const newBroker = await ensureBrokerSession(cwd, { env });
+        lines.push(`AGY_BROKER_ENDPOINT=${newBroker.endpoint}`);
+      }
+    } catch (err) {
+      // Broker startup failed, continue without it (fall back to direct spawn)
+      console.error('Failed to start agy broker:', err.message);
+    }
+  }
+
   appendFileSync(envFile, lines.join('\n') + '\n');
 }
 
@@ -60,6 +83,8 @@ async function onSessionEnd(payload, env) {
   if (!sessionId) return;
   const root = rootFor(payload.cwd, env);
   const executor = get('agy');
+
+  // Cancel running jobs
   for (const job of listJobs(root)) {
     if (job.sessionId !== sessionId) continue;
     if (job.status !== 'running' && job.status !== 'queued') continue;
@@ -67,6 +92,19 @@ async function onSessionEnd(payload, env) {
       await executor.cancel(job.pid);
     } catch {}
     upsertJob(root, { ...readJobFile(root, job.id) ?? job, status: 'cancelled', phase: 'cancelled', cancelledAt: isoNow() });
+  }
+
+  // Shutdown broker if configured to auto-shutdown (default: keep alive for resume)
+  const autoShutdown = env.AGY_BROKER_AUTO_SHUTDOWN === 'true';
+  if (autoShutdown && payload.cwd) {
+    try {
+      const broker = loadBrokerSession(payload.cwd);
+      if (broker && await isBrokerAlive(broker)) {
+        await sendBrokerShutdown(broker.endpoint);
+      }
+    } catch (err) {
+      // Ignore broker shutdown errors
+    }
   }
 }
 
