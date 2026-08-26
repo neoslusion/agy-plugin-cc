@@ -19,42 +19,16 @@ Raw slash-command arguments:
 3. Format as context prompt for agy
 4. Store for injection into next agy task/plan invocation
 
-## Transcript resolution
+## Execution
 
-- By default, uses `$AGY_TRANSCRIPT_PATH` from session environment
-- Can override with `--source <path>` argument
-- Transcript must be a `.jsonl` file from `.claude/projects/`
+Preview exactly what context the next agy invocation will receive:
 
-## Usage
-
-**Import current session:**
 ```bash
-/agy:transfer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/transfer-preview.mjs" "$ARGUMENTS"
 ```
 
-**Import specific transcript:**
-```bash
-/agy:transfer --source ~/.claude/projects/my-project/abc123.jsonl
-```
+- With no arguments, uses `$AGY_TRANSCRIPT_PATH` exported by the SessionStart hook.
+- `--source <path>` overrides the transcript; `--max-turns <n>` overrides the turn window.
+- Report the transcript path, recent/total turn counts, and the preview verbatim.
 
-## What gets transferred
-
-- Last 10 conversation turns (configurable)
-- User prompts and assistant responses
-- Excludes tool calls and internal state
-
-## Limitations
-
-- agy doesn't have native conversation import like codex
-- Context is injected as a prompt prefix, not true conversation merge
-- Large transcripts are truncated to avoid context overflow
-
-## When to use
-
-- Before handing complex work to agy that requires understanding prior decisions
-- When agy needs to know "what we tried before"
-- For continuity across multiple agy invocations
-
-The transfer happens automatically for task/plan commands when `AGY_TRANSCRIPT_PATH` is set (via SessionStart hook).
-
-This command explicitly triggers transfer and shows what context will be available.
+The transfer itself stays automatic: task/plan invocations inject this context when `AGY_TRANSCRIPT_PATH` is set.

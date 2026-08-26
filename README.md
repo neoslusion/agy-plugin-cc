@@ -2,6 +2,8 @@
 
 A Claude Code plugin that delegates work to **agy (Antigravity CLI)** via a persistent broker runtime. Enables real-time progress streaming, context transfer, phased orchestration, and native Agent tool integration for fan-out workflows.
 
+Intended division of labor: **Claude plans and judges; agy executes fully-specified instructions** (tasks, plan steps, mechanical changes). agy is not a second opinion or a diagnostician.
+
 ## Commands
 
 | Command | What it does |
@@ -11,7 +13,7 @@ A Claude Code plugin that delegates work to **agy (Antigravity CLI)** via a pers
 | `/agy:execute-plan` | Execute a plan file step-by-step with conversation resume |
 | `/agy:phased-plan` | **NEW:** Execute multi-phase plan with Claude synthesis between phases |
 | `/agy:transfer` | **NEW:** Import Claude session context into agy conversation |
-| `/agy:rescue` | Delegate a task via the `agy-rescue` subagent (proactive routing) |
+| `/agy:rescue` | Hand a specified task/plan step to agy for execution (agentic routing) |
 | `/agy:review` | Read-only code review, schema-enforced verdict |
 | `/agy:adversarial-review` | Skeptical design/security review |
 | `/agy:status` | Job table for this session (`--all` for all sessions) |
@@ -51,7 +53,7 @@ Plus `SessionStart`/`SessionEnd` hooks and an opt-in **stop-review gate** (fails
 ### Core Features (Preserved)
 - **Harness-managed background** — background jobs use `run_in_background: true`
 - **Subagent tracking** — `invoke_subagent`/`define_subagent` tool events detected
-- **Proactive delegation** — `agy-rescue` agent routes substantial tasks autonomously
+- **Agentic delegation** — `agy-rescue` hands fully-specified tasks and plan steps to agy; Claude keeps planning, diagnosis, and judgment
 - **Job store** — per-workspace state under `$CLAUDE_PLUGIN_DATA/state/`
 - **Executor registry** — uniform adapter interface (`preflight`, `runTask`, `cancel`, `collectContext`)
 - **Permission model** — reviews read-only; write jobs opt in with `--approve-all`

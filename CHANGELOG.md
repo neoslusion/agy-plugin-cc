@@ -21,6 +21,18 @@
   `tests/context-transfer.test.mjs` (turn extraction, prompt building,
   transcript path resolution) — so `npm test` no longer picks up manual
   scripts that need a live broker.
+- Docs/agents: repositioned agy as an executor, not a diagnostician.
+  `agy-rescue` now routes fully-specified tasks and plan steps for execution
+  instead of inviting "stuck / debugging rescue" delegations, returns failure
+  output verbatim (with permission hints) instead of empty hands so an
+  autonomously fanning-out orchestrator can react, quotes its task argument
+  against shell word-splitting, and never self-grants `--approve-all`.
+- Fix: `/agy:transfer` shipped as docs-only with no executable step. It now
+  runs `scripts/transfer-preview.mjs`: resolves the transcript
+  (`AGY_TRANSCRIPT_PATH` or `--source`), extracts recent turns, and prints
+  the context prompt preview verbatim. `validate-commands` now accepts
+  Agent-tool delegation (`subagent_type`) and any plugin-script invocation
+  instead of demanding a literal companion call in every command file.
 
 ## 0.3.1 (2026-08-22)
 

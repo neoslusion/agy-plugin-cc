@@ -1,5 +1,5 @@
 ---
-description: Delegate a task to the local agy (Antigravity) CLI for execution. Use when the user asks to hand work to Antigravity/Gemini, or to rescue a stuck task
+description: Hand a fully-specified task or plan step to the local agy (Antigravity) CLI for execution. Use when the user asks to give work to Antigravity/Gemini to carry out
 argument-hint: '[--resume|--fresh] [--model <slug>] [--effort low|medium|high] [--agent <name>] <task>'
 disable-model-invocation: true
 allowed-tools: Bash(node:*), AskUserQuestion

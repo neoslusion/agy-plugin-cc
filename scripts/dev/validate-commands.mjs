@@ -20,9 +20,12 @@ for (const f of files) {
   }
   const missing = ['description', 'disable-model-invocation'].filter((k) => !(k in kv));
   const hasArgs = body.includes('$ARGUMENTS');
-  const hasCompanion = body.includes('agy-companion.mjs');
-  if (missing.length || !hasArgs || !hasCompanion) {
-    console.log('BAD:', f, { missing, hasArgs, hasCompanion });
+  // A command either invokes a plugin script itself (agy-companion.mjs",
+  // transfer-preview.mjs", ...) or delegates through the Agent tool
+  // (subagent_type: "agy:plan-phase"); all are valid execution paths.
+  const hasExecutionPath = /subagent_type|\.mjs"/.test(body);
+  if (missing.length || !hasArgs || !hasExecutionPath) {
+    console.log('BAD:', f, { missing, hasArgs, hasExecutionPath });
     ok = false;
   }
 }

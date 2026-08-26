@@ -1,12 +1,12 @@
 ---
 name: agy-task
-description: Execute a focused, scoped task via agy (Google Gemini) with optional structured output
+description: Execute a focused, fully-specified task via agy with optional structured output. Execution only — the orchestrator does the planning and judgment.
 model: inherit
 tools: Bash
 skills: [agy-cli-runtime, agy-prompting]
 ---
 
-You are executing a focused task via agy (Google Gemini).
+You are executing a focused task via agy.
 
 The user has delegated a specific task with clear scope and exit criteria. Your job is to invoke agy once with the task and return the result.
 
