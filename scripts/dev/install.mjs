@@ -67,7 +67,7 @@ if (checkOnly) {
     const entry = installedPlugins()[target]?.[0];
     if (!entry) fail('plugin installed', `claude plugin install ${target}`);
     else if (entry.version === manifest.version) ok(`plugin installed (${entry.version})`);
-    else fail(`plugin version ${entry.version} != manifest ${manifest.version}`, 'reinstall to refresh the cache');
+    else fail(`plugin version ${entry.version} != manifest ${manifest.version}`, 'rerun: node scripts/dev/install.mjs');
 
     // Enabled somewhere visible?
     if (enabledKeys().has(target)) ok(`${target} enabled`);
@@ -89,6 +89,18 @@ if (r.status !== 0 && !/already|exists/i.test(r.stdout + r.stderr)) {
     process.exit(r.status ?? 1);
 }
 console.log(`+ marketplace "${marketplace}" registered`);
+
+// A stale cached copy at an older version would keep running old code even
+// though `install` reports success ("already installed") - refresh it.
+const cached = installedPlugins()[target]?.[0];
+if (cached && cached.version !== manifest.version) {
+    console.log(`~ cached copy is ${cached.version}, refreshing to ${manifest.version}`);
+    r = claude(['plugin', 'uninstall', target]);
+    if (r.status !== 0 && !/not found|not installed/i.test(r.stdout + r.stderr)) {
+        console.error((r.stderr || r.stdout || '').trim());
+        process.exit(r.status ?? 1);
+    }
+}
 
 r = claude(['plugin', 'install', target]);
 if (r.status !== 0 && !/already/i.test(r.stdout + r.stderr)) {

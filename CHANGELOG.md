@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-08-26)
 
 - Fix: the broker now runs one agy child per request instead of a single
   flight. Concurrent `Agent(subagent_type: "agy:task")` fan-out no longer
