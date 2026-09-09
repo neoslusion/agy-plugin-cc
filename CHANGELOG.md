@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1 (2026-09-09)
+
+- Renamed marketplace and package manifests from `gemini-plugin-cc` to
+  `agy-plugin-cc`.
+- Fix (broker lifecycle): `spawnBrokerProcess` now invokes `process.execPath`
+  directly instead of relying on `node` in PATH. Added `reapStaleBroker` to kill
+  hung or orphaned broker processes (`taskkill` on Windows, `SIGTERM` on POSIX)
+  before spawning replacements.
+- Fix (context transfer): `extractClaudeContext` now parses real Claude Code
+  transcript JSONL structures (`message.content`), strips non-transferable tool
+  result blocks, and introduces `selectContextTurns` to ensure user instructions
+  are not crowded out by assistant narration.
+- Commands: Modernized `/agy:cancel`, `/agy:result`, `/agy:status`, and
+  `/agy:transfer` to Claude Code's direct execution `!`node ...`` shorthand.
+- Cleaned up unused imports and aligned documentation with on-demand preview.
+
 ## 0.4.0 (2026-08-26)
 
 - Fix: the broker now runs one agy child per request instead of a single

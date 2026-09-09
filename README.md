@@ -1,4 +1,4 @@
-# gemini-plugin-cc
+# agy-plugin-cc
 
 A Claude Code plugin that delegates work to **agy (Antigravity CLI)** via a persistent broker runtime. Enables real-time progress streaming, context transfer, phased orchestration, and native Agent tool integration for fan-out workflows.
 
@@ -37,7 +37,7 @@ Plus `SessionStart`/`SessionEnd` hooks and an opt-in **stop-review gate** (fails
 ### Context Transfer
 - **Claude → agy session import** — Extracts recent turns from Claude transcript and injects as context
 - **Semantic filtering** — Only transfers relevant turns based on task scope
-- **Automatic injection** — `AGY_TRANSCRIPT_PATH` from SessionStart hook enables transparent context flow
+- **On-demand preview** — `/agy:transfer` resolves `AGY_TRANSCRIPT_PATH` from SessionStart hook to preview reconstructed conversation context
 
 ### Phased Orchestration
 - **Multi-phase plans** — Break complex work into focused phases with verification gates
@@ -82,8 +82,8 @@ Manual equivalent:
 
 ```bash
 claude plugin marketplace add /path/to/agy-plugin-cc
-claude plugin install agy@gemini-plugin-cc
-claude plugin enable agy@gemini-plugin-cc
+claude plugin install agy@agy-plugin-cc
+claude plugin enable agy@agy-plugin-cc
 ```
 
 Verify anytime with the doctor:
@@ -108,6 +108,6 @@ Unit tests run offline against the `fake-agy` fixture. Integration tests self-sk
 
 ## Deliberate non-features
 
-- **No session-transcript import** — no agy equivalent of ACP `externalAgentConfig/import`
+- **No native session import** — agy has no ACP `externalAgentConfig/import` equivalent, so `/agy:transfer` reconstructs context by extracting recent transcript turns into the prompt rather than handing over a real session object
 - **No session protocol (ACP-style transport)** — agy exposes headless mode only; the broker supervises independent stateless spawns (one child per request) rather than speaking a persistent agent protocol
 - **No auto-applying review fixes** — reviews are read-only by design

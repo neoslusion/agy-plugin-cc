@@ -4,7 +4,7 @@ import { binaryAvailable, runCommand } from '../process.mjs';
 import { collectReviewContext, resolveReviewTarget } from '../git.mjs';
 import { AgyBrokerClient } from '../rpc-client.mjs';
 import { ensureBrokerSession, isBrokerAlive, loadBrokerSession } from '../broker-lifecycle.mjs';
-import { resolveClaudeSessionPath, extractClaudeContext, buildContextPrompt } from '../claude-session-transfer.mjs';
+import { resolveClaudeSessionPath, extractClaudeContext } from '../claude-session-transfer.mjs';
 
 export const id = 'agy';
 export const binary = 'agy';

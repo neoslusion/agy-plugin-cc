@@ -63,8 +63,10 @@ export async function sendBrokerShutdown(endpoint) {
 export function spawnBrokerProcess({ scriptPath, cwd, endpoint, pidFile, logFile, env = process.env }) {
   const logFd = fs.openSync(logFile, "a");
 
-  // Just use "node" from PATH, let the system resolve it
-  const child = spawn("node", [scriptPath, "serve", "--endpoint", endpoint, "--cwd", cwd, "--pid-file", pidFile], {
+  // Use the running Node executable rather than resolving "node" from PATH:
+  // PATH may not carry node at all, or may resolve a different version than the
+  // one running the plugin.
+  const child = spawn(process.execPath, [scriptPath, "serve", "--endpoint", endpoint, "--cwd", cwd, "--pid-file", pidFile], {
     cwd,
     env: {
       ...env,
@@ -130,14 +132,38 @@ export async function isBrokerAlive(session) {
   }
 }
 
+// A broker whose endpoint no longer answers may still be running (hung, or
+// wedged before it started listening). Clearing state alone would leak that
+// process, so reap the recorded pid before starting a replacement.
+export function reapStaleBroker(session) {
+  const pid = session?.pid;
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false; // already gone
+  }
+  try {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).unref();
+    } else {
+      process.kill(pid, "SIGTERM");
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureBrokerSession(cwd, options = {}) {
   const existing = loadBrokerSession(cwd);
   if (existing && await isBrokerAlive(existing)) {
     return existing;
   }
 
-  // Clean up stale session
+  // Clean up stale session, killing any orphaned process it left behind.
   if (existing) {
+    reapStaleBroker(existing);
     clearBrokerSession(cwd);
   }
 

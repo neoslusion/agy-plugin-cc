@@ -50,28 +50,27 @@ export function extractClaudeContext(transcriptPath, options = {}) {
       try {
         const entry = JSON.parse(line);
 
-        // Extract user and assistant turns
-        if (entry.type === "user_message" && entry.content) {
-          turns.push({
-            role: "user",
-            content: extractTextFromContent(entry.content),
-            timestamp: entry.timestamp
-          });
-        } else if (entry.type === "assistant_message" && entry.content) {
-          turns.push({
-            role: "assistant",
-            content: extractTextFromContent(entry.content),
-            timestamp: entry.timestamp
-          });
+        // Extract user and assistant turns. Claude transcripts nest the payload
+        // under `message` ({ role, content }); older shapes put content at the
+        // top level, so accept both.
+        const role = entry.type === "user" ? "user" : entry.type === "assistant" ? "assistant" : null;
+        if (role) {
+          const rawContent = entry.message?.content ?? entry.content;
+          const content = rawContent ? extractTextFromContent(rawContent) : "";
+          if (content.trim()) {
+            turns.push({ role, content, timestamp: entry.timestamp });
+          }
         }
       } catch {
         // Skip malformed lines
       }
     }
 
-    // Apply filters
+    // A plain tail slice drops the user's ask on tool-heavy sessions, where the
+    // last N entries are all short assistant narration. Keep the recent user
+    // turns even when they fall outside the window.
     const maxTurns = options.maxTurns ?? 10;
-    const recentTurns = turns.slice(-maxTurns);
+    const recentTurns = selectContextTurns(turns, maxTurns);
 
     return {
       turns: recentTurns,
@@ -102,13 +101,46 @@ function extractTextFromContent(content) {
   return "";
 }
 
+const CONTEXT_WINDOW = 5;
+const NARRATION_MAX_CHARS = 100;
+const MIN_USER_TURNS = 2;
+
+// A naive tail window is wrong for tool-heavy sessions: those produce long runs
+// of short assistant narration ("Now the broker fix."), so the last N turns can
+// be entirely status lines with no user intent in them. Prefer substantive turns
+// and guarantee the recent user turns survive.
+export function selectContextTurns(turns, windowSize = CONTEXT_WINDOW) {
+  const indexed = turns.map((turn, index) => ({ ...turn, index }));
+
+  const substantive = indexed.filter(
+    (t) => t.role === 'user' || t.content.length > NARRATION_MAX_CHARS
+  );
+  const pool = substantive.length >= windowSize ? substantive : indexed;
+  const selected = new Map(pool.slice(-windowSize).map((t) => [t.index, t]));
+
+  // Backfill when the window still came out short on user turns. This can push
+  // the window one or two over windowSize; carrying the ask is worth more than
+  // holding the size exactly.
+  const countUsers = () => [...selected.values()].filter((t) => t.role === 'user').length;
+  for (const turn of indexed.filter((t) => t.role === 'user').slice(-MIN_USER_TURNS)) {
+    if (countUsers() >= MIN_USER_TURNS) break;
+    selected.set(turn.index, turn);
+  }
+
+  return [...selected.values()].sort((a, b) => a.index - b.index);
+}
+
 export function buildContextPrompt(claudeContext, taskPrompt) {
   if (!claudeContext || !claudeContext.turns || claudeContext.turns.length === 0) {
     return taskPrompt;
   }
 
-  const contextSummary = claudeContext.turns
-    .slice(-5) // Last 5 turns
+  const window = selectContextTurns(claudeContext.turns);
+  if (window.length === 0) {
+    return taskPrompt;
+  }
+
+  const contextSummary = window
     .map(turn => {
       const content = turn.content.slice(0, 200); // Truncate long messages
       return `${turn.role}: ${content}${turn.content.length > 200 ? '...' : ''}`;
@@ -117,7 +149,7 @@ export function buildContextPrompt(claudeContext, taskPrompt) {
 
   return `## Context from Claude Code session
 
-Recent conversation (last ${claudeContext.turns.slice(-5).length} turns):
+Recent conversation (${window.length} turns):
 
 ${contextSummary}
 

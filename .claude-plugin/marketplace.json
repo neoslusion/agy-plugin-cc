@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "gemini-plugin-cc",
+  "name": "agy-plugin-cc",
   "description": "Use the local Antigravity (agy) CLI as an executor and code reviewer from Claude Code.",
   "owner": { "name": "ducle", "url": "https://github.com/ApuruPai" },
   "plugins": [

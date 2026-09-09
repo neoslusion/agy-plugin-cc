@@ -5,18 +5,10 @@ disable-model-invocation: true
 allowed-tools: Bash(node:*)
 ---
 
-Show the full result of a finished agy job.
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/agy-companion.mjs" result "$ARGUMENTS"`
 
-Raw slash-command arguments:
-`$ARGUMENTS`
+Return the command output above verbatim. Do not paraphrase, summarize, or condense it.
 
-Core constraint:
-- Thin passthrough. Do not paraphrase or add commentary.
-
-Flow:
-- Run:
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/agy-companion.mjs" result "$ARGUMENTS"
-```
-- Return the command stdout verbatim, exactly as-is.
-- A job id or unambiguous prefix is required. For reviews, the output preserves the verdict, findings (ordered by severity), and next steps.
+Preserve every detail as reported: job id and status, verdict, findings in severity
+order, file paths and line numbers, error or parse messages, and next steps. A job id
+or unambiguous prefix is required.

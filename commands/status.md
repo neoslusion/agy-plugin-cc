@@ -5,18 +5,10 @@ disable-model-invocation: true
 allowed-tools: Bash(node:*)
 ---
 
-Show the status of tracked agy jobs.
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/agy-companion.mjs" status "$ARGUMENTS"`
 
-Raw slash-command arguments:
-`$ARGUMENTS`
+Return the command output above verbatim. Do not paraphrase or add commentary.
 
-Core constraint:
-- Thin passthrough. Do not paraphrase or add commentary.
-
-Flow:
-- Run:
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/agy-companion.mjs" status "$ARGUMENTS"
-```
-- Return the command stdout verbatim, exactly as-is.
-- With no job id, this prints a compact table of this session's jobs. `--all` shows every session's jobs. With a job id and `--wait`, it blocks until the job reaches a terminal state (or the timeout elapses).
+With no job id this is a compact table of this session's jobs; `--all` covers every
+session; a job id with `--wait` blocks until the job reaches a terminal state or the
+timeout elapses.
