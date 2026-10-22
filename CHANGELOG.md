@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+- Add a stdio MCP server to the Claude Code plugin (`.mcp.json`, `scripts/mcp-server.mjs`) exposing delegate, follow-up, status, wait, steer, interrupt, cancel and capabilities tools over the existing runner. Delegation results carry a `wakeCommand` built on the new `wait --wake`, which blocks until a result, required input or lost worker so a background host command can re-invoke an idle parent.
+- Give ACP readiness probes a 60-second default; the official Antigravity ACP server 1.4.1 takes about 30 seconds to answer `initialize` on Windows.
+- Scope runner tasks to `CLAUDE_CODE_SESSION_ID` when no explicit session is set, and export `AGENT_DELEGATION_DATA` from the SessionStart hook so Bash runner commands use the same state root as the hooks and MCP server.
+
+- Add parent-scoped `doctor` diagnostics and explicit interrupted-task repair after confirmed process exit. Preserve context, native sessions and retry identity; keep supervisor checkpoints resumable and never automatically rerun writes.
+- Add `providers` readiness reports and opt-in bounded Codex App Server/Claude Agent SDK model discovery plus ACP initialization. Separate catalog presence from model access and discover managed ACP runtimes consistently during preflight.
+- Add an ordinary-prompt evaluation launcher for installed Codex/Claude hosts with isolated projects, transcript capture and acceptance/delegation evidence grading. Live behavioral evaluation remains blocked by the Windows shell launcher.
+
+- Add Windows Antigravity ACP runtime discovery and an explicit `acp-setup --check|--install` command using the official registry and paired server/helper archive, with managed adapter discovery and installer tests. The focused 30-test suite passes, including Windows extraction and isolated plugin packaging; actual Google runtime installation remains blocked by the current shell sandbox.
+
+- Refine the plugin into a terminal-first orchestration workflow: asynchronous `delegate`, parent-scoped `tasks`, bounded `wait` and cursor-based `watch`, and tracked `follow-up` with native session reuse or portable provider handoffs.
+- Make dispatch retry keys idempotent across concurrent calls, retain their terminal results, serialize follow-up turns, preserve prepared context in queued tasks, and expose owned supervisor children to parent views, controls and completion hooks.
+
+- Add opt-in Codex App Server, Claude Agent SDK and Antigravity ACP adapters with provider-owned native sessions, scoped permissions, capability checks and supported active-task controls. Keep CLI defaults.
+- Add immutable context revisions with hashes and stale-update checks, shared supervisor snapshots, durable ordered events, bounded parent-scoped completion hooks and task coordination commands.
+- Add optional read-only monitor advice after failed supervisor evidence gates; preserve acceptance criteria and bounded retries without model polling.
+
+- Add explicit supervisor `run` mode with durable checkpoints, planner/worker/reviewer stages, isolated Git worktrees, patch integration, configurable verification evidence gates, bounded revisions, resume, and identity-aware cancellation.
+- Complete omp-style supervisor fan-out: validated multi-step plans with unique IDs and non-overlapping file ownership, typed worker results, bounded concurrent worktrees, per-task checks and structured review, ordered multi-patch integration, durable per-task resume, and fan-out cancellation.
+- Add automatic orchestration instructions, shared planner/advisor/executor/reviewer/explorer/tester contracts, and native-or-CLI role routing.
+- Add project `configure`, inspectable `route`, and interactive `start` commands. Generate Codex and Claude native agents while preserving existing project instructions and edited agents.
+- Apply read-only role intent to all CLI adapters and separate configured parent model selection from worker models.
+- Retry transient Windows sharing-lock failures when atomically updating concurrent job records.
+- Add the `agent-delegation` plugin for Codex and Claude Code, with one shared delegation skill and configurable executor roles.
+- Add a host-neutral runner and Codex/Claude CLI adapters alongside agy. Preserve the existing agy commands and installer.
+- Scope resume to executor and parent session; support prompt files, normalized structured results, explicit permissions, timeouts, and child-process cancellation.
+- Discover jobs from individual records to avoid concurrent index updates losing jobs. Retain active jobs when pruning terminal history.
+- Correct the legacy stop-gate loop guard and skip hooks in delegated workers.
+- Add adapter, packaging, concurrent-worker, cancellation, opt-in live CLI, and isolated installer tests.
+
 ## 0.4.1 (2026-09-09)
 
 - Renamed marketplace and package manifests from `gemini-plugin-cc` to

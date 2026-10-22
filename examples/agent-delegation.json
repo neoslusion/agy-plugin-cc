@@ -1,0 +1,32 @@
+{
+  "orchestrator": {
+    "host": "codex",
+    "model": "gpt-6-astra",
+    "effort": "medium",
+    "instructions": "Plan and verify in the parent session. Delegate implementation after defining acceptance criteria."
+  },
+  "automation": { "mode": "auto", "maxParallel": 4 },
+  "supervisor": {
+    "maxIterations": 4,
+    "maxWorkers": 4,
+    "plannerRole": "planner",
+    "executorRole": "executor",
+    "reviewerRole": "reviewer",
+    "monitorRole": "monitor",
+    "verifyCommands": [["npm", "test"]]
+  },
+  "defaultExecutor": "agy",
+  "executors": {
+    "agy": { "effort": "medium" },
+    "codex": { "integration": "app-server", "effort": "high" },
+    "claude": { "integration": "agent-sdk", "effort": "high" }
+  },
+  "roles": {
+    "planner": { "executor": "codex", "transport": "auto", "purpose": "planner", "model": "gpt-6-astra", "effort": "medium" },
+    "advisor": { "executor": "claude", "transport": "auto", "purpose": "advisor" },
+    "monitor": { "executor": "claude", "purpose": "monitor" },
+    "executor": { "executor": "agy", "purpose": "executor" },
+    "reviewer": { "executor": "codex", "transport": "auto", "purpose": "reviewer", "model": "gpt-6-astra", "effort": "low" },
+    "document": { "executor": "claude" }
+  }
+}
