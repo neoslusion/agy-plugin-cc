@@ -232,7 +232,9 @@ test('cancel stops an active supervisor and its verified child tree', async () =
   const closed = new Promise(resolve => child.once('close', resolve));
   try {
     let record;
-    const deadline = Date.now() + 5000;
+    // Poll until the supervisor dispatches both workers. The deadline only
+    // bounds a failure, so a loaded machine does not turn this into a flaky test.
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       record = listSupervisors(c.root).find(item => item.status === 'running');
       if (record?.parallel?.filter(item => item.jobId).length === 2) break;

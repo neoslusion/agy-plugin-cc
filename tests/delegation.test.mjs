@@ -126,7 +126,9 @@ test('cancel terminates the tracked child and preserves cancelled status', async
   const finished = new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve); });
   try {
     let job;
-    const deadline = Date.now() + 5000;
+    // Poll until the executor child is tracked. The deadline only bounds a
+    // failure, so a loaded machine does not turn this into a flaky test.
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       job = listJobs(c.root)[0];
       if (job?.pid && job.pid !== child.pid) break;

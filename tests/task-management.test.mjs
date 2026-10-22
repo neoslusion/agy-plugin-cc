@@ -70,13 +70,22 @@ test('doctor repair rejects running owners, foreign tasks, workers and bulk muta
 
 test('doctor recognizes a real exited fixture process using its default OS probe', async () => {
   const c = fixture();
-  const child = spawnSync(process.execPath, ['-e', ''], { windowsHide: true });
-  assert.equal(child.status, 0);
-  const record = job(c, 'exited-fixture', { pid: child.pid, workerPid: child.pid });
-  assert.equal(diagnoseTask(record, []).stale, true);
-  const result = await command(c, ['doctor', record.id, '--repair', '--json']);
-  assert.equal(result.code, 0, result.error);
-  assert.equal(readJobFile(c.root, record.id).status, 'failed');
+  // A process id is only a hint: the OS may hand it to another process
+  // between the fixture exiting and the repair running. The doctor reads a
+  // recycled id as "still present" on purpose, so retry with a fresh child
+  // until the id stays free for the whole check.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const child = spawnSync(process.execPath, ['-e', ''], { windowsHide: true });
+    assert.equal(child.status, 0);
+    const record = job(c, `exited-fixture-${attempt}`, { pid: child.pid, workerPid: child.pid });
+    if (processState(child.pid) !== 'absent') continue;
+    assert.equal(diagnoseTask(record, []).stale, true);
+    const result = await command(c, ['doctor', record.id, '--repair', '--json']);
+    if (result.code !== 0) continue;
+    assert.equal(readJobFile(c.root, record.id).status, 'failed');
+    return;
+  }
+  assert.fail('the exited fixture process id was recycled before the repair could confirm it');
 });
 
 test('doctor keeps supervisor checkpoints resumable and reports unresolved children', async () => {

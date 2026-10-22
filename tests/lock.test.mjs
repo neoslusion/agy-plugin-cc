@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -69,18 +69,33 @@ test('concurrent event writers keep an ordered log', async () => {
 test('a live holder is never locked out by a waiter that suspects a stale lock', async () => {
   const dir = tempDir('lock-holder-');
   const path = join(dir, '.lock');
+  const release = join(dir, 'release');
   const url = pathToFileURL(join(import.meta.dirname, '../scripts/lib/lock.mjs')).href;
-  const source = `import {withLock} from ${JSON.stringify(url)}; withLock(process.argv[1], () => { process.stdout.write('held\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000); });`;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', source, path], { windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] });
+  // The child holds the lock until the parent releases it, so the check does
+  // not depend on how long the machine takes to start a process.
+  const source = `import {existsSync} from 'node:fs';
+    import {withLock} from ${JSON.stringify(url)};
+    withLock(process.env.LOCK_PATH, () => {
+      process.stdout.write('held\\n');
+      while (!existsSync(process.env.LOCK_RELEASE)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    });`;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'inherit'],
+    env: { ...process.env, LOCK_PATH: path, LOCK_RELEASE: release },
+  });
   await new Promise((resolve, reject) => {
     child.stdout.once('data', resolve);
     child.once('error', reject);
   });
-  // The child holds the lock while it runs. Repeatedly suspecting it as
-  // abandoned must not remove it, or a second writer would enter the
-  // critical section at the same time.
-  for (let n = 0; n < 200; n++) breakAbandonedLock(path);
-  assert.equal(existsSync(path), true, 'the live holder lost its lock');
+  assert.equal(existsSync(path), true, 'the holder did not take the lock');
+  // Repeatedly suspecting the lock as abandoned must not remove it, or a
+  // second writer would enter the critical section at the same time.
+  for (let n = 0; n < 200; n++) {
+    breakAbandonedLock(path);
+    assert.equal(existsSync(path), true, 'the live holder lost its lock');
+  }
+  writeFileSync(release, 'go');
   const exited = await new Promise(resolve => child.once('exit', resolve));
   assert.equal(exited, 0);
   assert.equal(existsSync(path), false, 'the lock was not released on exit');
