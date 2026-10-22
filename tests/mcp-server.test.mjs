@@ -56,7 +56,9 @@ test('an MCP client sees the delegation tools, host instructions and the session
 });
 
 test('delegation over MCP is idempotent, follows up, and shares the runner task view', async () => {
-  const c = fixture({ delayMs: 1000 });
+  // The worker must still be running when the zero-timeout wait is issued, so
+  // give it more headroom than a loaded machine needs for two round-trips.
+  const c = fixture({ delayMs: 5000 });
   const client = await connect(c);
   try {
     const receipt = await call(client, 'delegate_task', { task: 'hello', executor: 'claude', requestId: 'round-1' });

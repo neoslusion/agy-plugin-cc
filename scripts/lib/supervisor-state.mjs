@@ -1,8 +1,9 @@
 import { join } from 'node:path';
-import { closeSync, openSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { ensureDir, readFileSafe, writeJsonAtomic } from './fs.mjs';
 import { generateJobId, isoNow } from './state.mjs';
 import { appendTaskEvent } from './task-events.mjs';
+import { withLock as withFileLock } from './lock.mjs';
 
 const STATE_VERSION = 2;
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -20,23 +21,7 @@ function lockPath(root, id) {
 
 function withLock(root, id, callback) {
   ensureDir(supervisorDir(root));
-  const path = lockPath(root, id);
-  let fd;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      fd = openSync(path, 'wx');
-      break;
-    } catch (error) {
-      if (error.code !== 'EEXIST' || attempt >= 16) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
-    }
-  }
-  try {
-    return callback();
-  } finally {
-    try { closeSync(fd); } catch {}
-    try { unlinkSync(path); } catch {}
-  }
+  return withFileLock(lockPath(root, id), callback);
 }
 
 

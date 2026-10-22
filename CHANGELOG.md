@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix the shared lock so concurrent writers stop colliding and a lock left behind by a killed process no longer wedges a task ID forever. The wait now uses a jittered backoff with a larger budget, and an abandoned lock is broken only once its recorded holder is confirmed gone and the file identity still matches, so a live holder is never locked out of its critical section.
+- Give the MCP delegation test enough headroom to assert that a zero-timeout wait returns without blocking while the worker is still running.
+
 - Add a stdio MCP server to the Claude Code plugin (`.mcp.json`, `scripts/mcp-server.mjs`) exposing delegate, follow-up, status, wait, steer, interrupt, cancel and capabilities tools over the existing runner. Delegation results carry a `wakeCommand` built on the new `wait --wake`, which blocks until a result, required input or lost worker so a background host command can re-invoke an idle parent.
 - Give ACP readiness probes a 60-second default; the official Antigravity ACP server 1.4.1 takes about 30 seconds to answer `initialize` on Windows.
 - Scope runner tasks to `CLAUDE_CODE_SESSION_ID` when no explicit session is set, and export `AGENT_DELEGATION_DATA` from the SessionStart hook so Bash runner commands use the same state root as the hooks and MCP server.

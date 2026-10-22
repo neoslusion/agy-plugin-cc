@@ -1,8 +1,9 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { closeSync, openSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { ensureDir, readFileSafe, writeJsonAtomic } from './fs.mjs';
+import { withLock } from './lock.mjs';
 
 export const MAX_JOBS = 50;
 const STATE_VERSION = 1;
@@ -36,23 +37,7 @@ function jobLockPath(root, id) {
 
 function withJobLock(root, id, mutate) {
   ensureDir(jobDir(root));
-  const lock = jobLockPath(root, id);
-  let fd;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      fd = openSync(lock, 'wx');
-      break;
-    } catch (error) {
-      if (error.code !== 'EEXIST' || attempt >= 16) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
-    }
-  }
-  try {
-    return mutate();
-  } finally {
-    try { closeSync(fd); } catch {}
-    try { unlinkSync(lock); } catch {}
-  }
+  return withLock(jobLockPath(root, id), mutate);
 }
 
 export function mutateJob(root, id, mutate) {
