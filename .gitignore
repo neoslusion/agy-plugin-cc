@@ -3,4 +3,7 @@
 node_modules/
 .npm/
 scratch/
+plugins/agent-delegation/scripts/
+plugins/agent-delegation/prompts/
+plugins/agent-delegation/schemas/
 .agent-delegation-runtime/
