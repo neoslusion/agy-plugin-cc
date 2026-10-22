@@ -31,7 +31,7 @@ function makeJob(root, id, { updatedAt, sessionId = 'sess-1' } = {}) {
     request: `request for ${id}`,
     sessionId,
     workspaceRoot: '/tmp/w',
-    overrides: { id, createdAt: updatedAt, updatedAt },
+    overrides: { id, createdAt: updatedAt, updatedAt, status: 'completed' },
   });
   upsertJob(root, job);
   return job;
@@ -45,7 +45,7 @@ test('upsert/read/list round-trips a job', () => {
   const all = listJobs(root);
   assert.equal(all.length, 1);
   assert.equal(all[0].id, 'task-abc');
-  assert.deepEqual(job.status, 'queued');
+  assert.deepEqual(job.status, 'completed');
 });
 
 test('listJobs returns newest first by updatedAt', () => {
@@ -77,6 +77,14 @@ test('updateState mutates and persists', () => {
     s.config.stopReviewGate = true;
   });
   assert.equal(loadState(root).config.stopReviewGate, true);
+});
+
+test('pruning terminal history preserves old active jobs', () => {
+  const root = newRoot();
+  upsertJob(root, createJobRecord({ executor: 'agy', kind: 'task', request: 'still running', overrides: { id: 'active-old', status: 'running', updatedAt: '2020-01-01T00:00:00.000Z' } }));
+  for (let i = 0; i < MAX_JOBS + 2; i++) makeJob(root, `terminal-${i}`);
+  assert.equal(listJobs(root).length, MAX_JOBS + 1);
+  assert.equal(readJobFile(root, 'active-old').status, 'running');
 });
 
 test('config get/set round-trips', () => {

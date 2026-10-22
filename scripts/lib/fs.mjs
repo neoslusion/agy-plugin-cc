@@ -13,7 +13,8 @@ export function readFileSafe(path, { maxBytes = DEFAULT_MAX_BYTES } = {}) {
     return null;
   }
   if (!stat.isFile() || stat.size > maxBytes) return null;
-  const buf = readFileSync(path);
+  let buf;
+  try { buf = readFileSync(path); } catch (err) { if (err.code === 'ENOENT') return null; throw err; }
   if (buf.includes(0)) return null;
   return buf.toString('utf8');
 }
@@ -24,7 +25,15 @@ export function writeJsonAtomic(path, value) {
   const tmp = join(dir, `.${basename(path)}.${randomBytes(4).toString('hex')}.tmp`);
   writeFileSync(tmp, JSON.stringify(value, null, 2));
   try {
-    renameSync(tmp, path);
+    // Windows readers can briefly hold a sharing lock while another worker lists jobs.
+    // Retry the atomic replacement; never unlink the destination to make it succeed.
+    for (let attempt = 0; ; attempt++) {
+      try { renameSync(tmp, path); break; }
+      catch (err) {
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code) || attempt >= 8) throw err;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
+      }
+    }
   } catch (err) {
     try {
       rmSync(tmp);

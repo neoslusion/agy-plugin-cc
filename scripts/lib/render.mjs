@@ -24,7 +24,7 @@ function durationLabel(job) {
 
 export function renderStatusTable(snapshot) {
   const { jobs } = snapshot;
-  if (jobs.length === 0) return 'No jobs yet. Run `/agy:task "..."` to delegate work.';
+  if (jobs.length === 0) return 'No jobs yet. Use the delegation skill or run agent-runner.mjs task to delegate work.';
   const rows = jobs.map((j) => {
     const id = j.id.length > 28 ? j.id.slice(0, 25) + '...' : j.id;
     return `| \`${id}\` | ${j.kindLabel} | ${j.executor} | ${STATUS_LABELS[j.status] ?? j.status} | ${j.phase} | ${ageLabel(j)} |`;

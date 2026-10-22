@@ -10,6 +10,9 @@ export const BOOL_FLAGS = new Set([
   'enable-approve-all',
   'disable-approve-all',
   'approve-all',
+  'integrate',
+  'allow-dirty',
+  'ack',
 ]);
 
 export const VALUE_FLAGS = new Set([
@@ -23,6 +26,24 @@ export const VALUE_FLAGS = new Set([
   'executor',
   'print-timeout',
   'json-schema',
+  'config',
+  'role',
+  'prompt-file',
+  'cwd',
+  'session-id',
+  'task-file',
+  'max-iterations',
+  'max-workers',
+  'supervisor-id',
+  'integration',
+  'context-id',
+  'context-revision',
+  'expected-revision',
+  'context-file',
+  'after',
+  'message-file',
+  'request-id',
+  'wait-timeout-ms',
 ]);
 
 export function parseArgs(argv, { extraBool = [], extraValue = [] } = {}) {

@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { isoNow, generateJobId, readJobFile, resolveJobLogFile, upsertJob } from './state.mjs';
+import { isoNow, generateJobId, mutateJob, readJobFile, resolveJobLogFile, upsertJob } from './state.mjs';
+import { appendTaskEvent } from './task-events.mjs';
 
 export const KIND_LABELS = {
   task: 'Task',
@@ -14,6 +15,7 @@ export const WRITE_KINDS = new Set(['task', 'plan']);
 export function createJobRecord({ executor, kind, request, sessionId, workspaceRoot, overrides = {} }) {
   const now = isoNow();
   return {
+    version: 1,
     id: overrides.id ?? generateJobId(kind),
     executor,
     kind,
@@ -39,6 +41,7 @@ export function createJobRecord({ executor, kind, request, sessionId, workspaceR
     result: null,
     rendered: null,
     request,
+    assignment: request,
     ...overrides,
   };
 }
@@ -69,15 +72,20 @@ export function createProgressReporter(root, job) {
     update: (patch) => updater.patch(patch),
     setPhase: (phase) => updater.setPhase(phase),
     log: (line) => appendLogLine(root, job, line),
+    event: (type, data) => appendTaskEvent(root, job.id, type, data),
   };
 }
 
 export function createJobProgressUpdater(root, job) {
   return {
     patch(patch) {
-      const record = { ...job, ...patch, updatedAt: isoNow() };
-      Object.assign(job, record);
-      upsertJob(root, record);
+      const record = mutateJob(root, job.id, current => {
+        if (!current) return { ...job, ...patch };
+        if (current.status === 'cancelled') return current;
+        return { ...current, ...patch };
+      }) ?? upsertJob(root, { ...job, ...patch });
+      if (record) Object.assign(job, record);
+      return record;
     },
     setStatus(status) {
       this.patch({ status });
@@ -90,12 +98,23 @@ export function createJobProgressUpdater(root, job) {
 
 export async function runTrackedJob({ root, job, run }) {
   const updater = createJobProgressUpdater(root, job);
-  updater.patch({ status: 'running', phase: 'starting', startedAt: job.startedAt ?? isoNow(), pid: job.pid ?? process.pid });
+  // A queued dispatch already exists on disk; preserve its newly prepared prompt.
+  const started = updater.patch({ status: 'running', phase: 'starting', startedAt: job.startedAt ?? isoNow(), pid: job.pid ?? process.pid, workerPid: job.workerPid ?? process.pid, ...(job.request !== undefined ? { request: job.request } : {}) });
+  if (started.status === 'cancelled') return started;
+  appendTaskEvent(root, job.id, 'task.started', { executor: job.executor, role: job.role ?? null, integration: job.integration ?? 'cli', context: job.context ?? null });
   try {
     const result = await run(createProgressReporter(root, job));
-    updater.patch({ status: 'completed', phase: 'done', result, completedAt: isoNow(), exitCode: 0, errorMessage: null });
+    const persisted = readJobFile(root, job.id);
+    if (persisted?.status === 'cancelled') return persisted;
+    const status = result?.status ?? 'completed';
+    if (!['completed', 'failed', 'cancelled'].includes(status)) throw new Error(`Invalid task terminal status: ${status}`);
+    updater.patch({ status, phase: status === 'completed' ? 'done' : status, result, completedAt: isoNow(), exitCode: result?.exitCode ?? (status === 'completed' ? 0 : 1), errorMessage: result?.error ?? null });
+    appendTaskEvent(root, job.id, `task.${status}`, { conversationId: job.conversationId ?? result?.conversationId ?? null, summary: String(result?.response ?? '').slice(0, 8192), error: String(result?.error ?? '').slice(0, 8192) || null, changedFiles: result?.changedFiles?.slice(0, 256) ?? [], context: job.context ?? null });
   } catch (err) {
+    const persisted = readJobFile(root, job.id);
+    if (persisted?.status === 'cancelled') return persisted;
     updater.patch({ status: 'failed', phase: 'failed', errorMessage: err?.message ?? String(err), completedAt: isoNow(), exitCode: 1 });
+    appendTaskEvent(root, job.id, 'task.failed', { error: String(err?.message ?? err).slice(0, 8192), context: job.context ?? null });
   }
   return readJobFile(root, job.id);
 }

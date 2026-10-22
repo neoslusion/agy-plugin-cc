@@ -96,6 +96,18 @@ test('progress reporter persists patches and appends to log', () => {
   assert.ok(existsSync(job.logFile));
 });
 
+test('cancelled jobs reject later progress updates', () => {
+  const root = newRoot();
+  const job = save(root, createJobRecord({ executor: 'agy', kind: 'task', request: 'x', workspaceRoot: '/w', overrides: { status: 'running' } }));
+  const reporter = createProgressReporter(root, job);
+  save(root, { ...job, status: 'cancelled', phase: 'cancelled' });
+  reporter.update({ phase: 'acting', conversationId: 'must-not-win' });
+  const persisted = readJobFile(root, job.id);
+  assert.equal(persisted.status, 'cancelled');
+  assert.equal(persisted.phase, 'cancelled');
+  assert.equal(persisted.conversationId, null);
+});
+
 test('buildStatusSnapshot filters by session unless all', () => {
   const root = newRoot();
   const j1 = save(root, createJobRecord({ executor: 'agy', kind: 'task', request: 'a', sessionId: 's1', workspaceRoot: '/w' }));

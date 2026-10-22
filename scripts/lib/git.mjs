@@ -1,11 +1,21 @@
+import { join } from 'node:path';
 import { runCommand } from './process.mjs';
-
+import { readFileSafe } from './fs.mjs';
 export const DEFAULT_INLINE_DIFF_MAX_FILES = 2;
 export const DEFAULT_INLINE_DIFF_MAX_BYTES = 256 * 1024;
 
 function git(cwd, args) {
   return runCommand('git', args, { cwd, env: { ...process.env, GIT_PAGER: 'cat' } });
 }
+function requiredGit(cwd, args) {
+  const result = git(cwd, args);
+  if (result.code !== 0) {
+    const detail = (result.stderr || result.stdout || result.error?.message || '').trim();
+    throw new Error(`git ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
+  }
+  return result;
+}
+
 
 export function ensureGitRepository(cwd) {
   const res = git(cwd, ['rev-parse', '--show-toplevel']);
@@ -66,17 +76,22 @@ function parseShortstat(stdout) {
 }
 
 export function collectReviewContext(cwd, target, { maxFiles = DEFAULT_INLINE_DIFF_MAX_FILES, maxBytes = DEFAULT_INLINE_DIFF_MAX_BYTES } = {}) {
+  requiredGit(cwd, ['rev-parse', '--show-toplevel']);
   const changedFiles = [];
   let shortstat;
   if (target.kind === 'branch') {
     const base = target.base;
-    changedFiles.push(...nameOnly(cwd, ['diff', '--name-only', `${base}...HEAD`]));
-    shortstat = parseShortstat(git(cwd, ['-c', 'color.ui=never', 'diff', '--shortstat', `${base}...HEAD`]).stdout);
+    if (typeof base !== 'string' || !base.trim()) throw new Error('branch review requires a base ref');
+    requiredGit(cwd, ['rev-parse', '--verify', `${base}^{commit}`]);
+    changedFiles.push(...nameOnly(cwd, ['diff', '--name-only', `${base}...HEAD`], true));
+    shortstat = parseShortstat(requiredGit(cwd, ['-c', 'color.ui=never', 'diff', '--shortstat', `${base}...HEAD`]).stdout);
   } else {
-    changedFiles.push(...nameOnly(cwd, ['diff', '--name-only']));
-    changedFiles.push(...nameOnly(cwd, ['diff', '--cached', '--name-only']));
-    const u = parseShortstat(git(cwd, ['-c', 'color.ui=never', 'diff', '--shortstat']).stdout);
-    const s = parseShortstat(git(cwd, ['-c', 'color.ui=never', 'diff', '--cached', '--shortstat']).stdout);
+    changedFiles.push(...nameOnly(cwd, ['diff', '--name-only'], true));
+    changedFiles.push(...nameOnly(cwd, ['diff', '--cached', '--name-only'], true));
+    const working = getWorkingTreeState(cwd);
+    changedFiles.push(...working.untracked);
+    const u = parseShortstat(requiredGit(cwd, ['-c', 'color.ui=never', 'diff', '--shortstat']).stdout);
+    const s = parseShortstat(requiredGit(cwd, ['-c', 'color.ui=never', 'diff', '--cached', '--shortstat']).stdout);
     shortstat = { files: u.files + s.files, insertions: u.insertions + s.insertions, deletions: u.deletions + s.deletions };
   }
   const uniqueFiles = [...new Set(changedFiles)];
@@ -91,13 +106,17 @@ export function collectReviewContext(cwd, target, { maxFiles = DEFAULT_INLINE_DI
   }
   let diff;
   if (target.kind === 'branch') {
-    diff = git(cwd, ['diff', `${target.base}...HEAD`]).stdout;
+    diff = requiredGit(cwd, ['diff', `${target.base}...HEAD`]).stdout;
   } else {
-    const unstaged = git(cwd, ['diff']).stdout;
-    const staged = git(cwd, ['diff', '--cached']).stdout;
+    const unstaged = requiredGit(cwd, ['diff']).stdout;
+    const staged = requiredGit(cwd, ['diff', '--cached']).stdout;
     const parts = [];
     if (staged) parts.push('# STAGED CHANGES\n' + staged);
     if (unstaged) parts.push('# UNSTAGED CHANGES\n' + unstaged);
+    for (const file of getWorkingTreeState(cwd).untracked) {
+      const content = readFileSafe(join(cwd, file), { maxBytes });
+      parts.push(`# UNTRACKED FILE ${file}\n${content ?? '[binary or oversized file omitted]'}`);
+    }
     diff = parts.join('\n');
   }
   const bytes = Buffer.byteLength(diff, 'utf8');
@@ -113,9 +132,16 @@ export function collectReviewContext(cwd, target, { maxFiles = DEFAULT_INLINE_DI
   return { mode: 'inline', target, changedFiles: uniqueFiles, estimatedBytes: bytes, diff };
 }
 
-function nameOnly(cwd, args) {
+
+function nameOnly(cwd, args, required = false) {
   const res = git(cwd, ['-c', 'core.quotepath=false', ...args]);
-  if (res.code !== 0) return [];
+  if (res.code !== 0) {
+    if (required) {
+      const detail = (res.stderr || res.stdout || res.error?.message || '').trim();
+      throw new Error(`git ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
+    }
+    return [];
+  }
   return res.stdout.split('\n').filter((l) => l.trim());
 }
 

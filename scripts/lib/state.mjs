@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { ensureDir, readFileSafe, writeJsonAtomic } from './fs.mjs';
 
 export const MAX_JOBS = 50;
@@ -30,19 +30,54 @@ export function resolveJobFile(root, id) {
 export function resolveJobLogFile(root, id) {
   return join(jobDir(root), `${id}.log`);
 }
+function jobLockPath(root, id) {
+  return `${resolveJobFile(root, id)}.lock`;
+}
+
+function withJobLock(root, id, mutate) {
+  ensureDir(jobDir(root));
+  const lock = jobLockPath(root, id);
+  let fd;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fd = openSync(lock, 'wx');
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST' || attempt >= 16) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * (attempt + 1));
+    }
+  }
+  try {
+    return mutate();
+  } finally {
+    try { closeSync(fd); } catch {}
+    try { unlinkSync(lock); } catch {}
+  }
+}
+
+export function mutateJob(root, id, mutate) {
+  return withJobLock(root, id, () => {
+    const current = readJobFile(root, id);
+    if (!current) return null;
+    const next = mutate({ ...current });
+    if (next) writeJobFile(root, { ...next, updatedAt: next.updatedAt ?? isoNow() });
+    return next;
+  });
+}
+
 
 export function loadState(root) {
   const raw = readFileSafe(stateFile(root), { maxBytes: 16 * 1024 * 1024 });
-  if (raw === null) return { version: STATE_VERSION, config: { stopReviewGate: false }, jobs: [] };
+  if (raw === null) return { version: STATE_VERSION, config: { stopReviewGate: false }, jobs: listJobs(root).map(j => j.id) };
   try {
     const parsed = JSON.parse(raw);
     return {
       version: parsed.version ?? STATE_VERSION,
       config: { stopReviewGate: Boolean(parsed.config?.stopReviewGate), ...parsed.config },
-      jobs: Array.isArray(parsed.jobs) ? parsed.jobs : [],
+      jobs: listJobs(root).map(j => j.id),
     };
   } catch {
-    return { version: STATE_VERSION, config: { stopReviewGate: false }, jobs: [] };
+    return { version: STATE_VERSION, config: { stopReviewGate: false }, jobs: listJobs(root).map(j => j.id) };
   }
 }
 
@@ -65,24 +100,21 @@ export function generateJobId(prefix) {
 }
 
 export function upsertJob(root, job) {
-  const record = readJobFile(root, job.id) ?? job;
-  const merged = { ...record, ...job, updatedAt: job.updatedAt ?? record.updatedAt ?? isoNow() };
-  writeJobFile(root, merged);
-  updateState(root, (state) => {
-    if (!state.jobs.includes(merged.id)) state.jobs.push(merged.id);
+  const merged = withJobLock(root, job.id, () => {
+    const record = readJobFile(root, job.id) ?? job;
+    const next = { ...record, ...job, updatedAt: job.updatedAt ?? record.updatedAt ?? isoNow() };
+    writeJobFile(root, next);
+    return next;
   });
-  const all = listJobs(root);
-  all.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
-  const kept = all.slice(0, MAX_JOBS);
-  const dropped = all.slice(MAX_JOBS);
+  // Terminal dispatches retain their result and retry identity across later tasks.
+  const finished = listJobs(root).filter(j => !j.dispatchFingerprint && ['completed', 'failed', 'cancelled'].includes(j.status));
+  const dropped = finished.slice(MAX_JOBS);
   for (const old of dropped) {
     try {
       rmSync(resolveJobFile(root, old.id), { force: true });
+      rmSync(resolveJobLogFile(root, old.id), { force: true });
     } catch {}
   }
-  updateState(root, (state) => {
-    state.jobs = kept.map((j) => j.id);
-  });
   return merged;
 }
 
@@ -92,7 +124,7 @@ export function writeJobFile(root, job) {
 }
 
 export function readJobFile(root, id) {
-  const raw = readFileSafe(resolveJobFile(root, id));
+  const raw = readFileSafe(resolveJobFile(root, id), { maxBytes: 64 * 1024 * 1024 });
   if (raw === null) return null;
   try {
     return JSON.parse(raw);
@@ -102,13 +134,16 @@ export function readJobFile(root, id) {
 }
 
 export function listJobs(root) {
-  const state = loadState(root);
+  // Each worker owns its record. Discover records directly so concurrent
+  // workers never overwrite a shared read/modify/write job index.
+  let files;
+  try { files = readdirSync(jobDir(root)); } catch (err) { if (err.code === 'ENOENT') return []; throw err; }
   const jobs = [];
-  for (const id of state.jobs) {
-    const job = readJobFile(root, id);
+  for (const file of files.filter(f => f.endsWith('.json') && !f.startsWith('.'))) {
+    const job = readJobFile(root, file.slice(0, -5));
     if (job) jobs.push(job);
   }
-  return jobs;
+  return jobs.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)) || b.id.localeCompare(a.id));
 }
 
 export function getConfig(root) {
