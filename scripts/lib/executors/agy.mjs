@@ -5,6 +5,7 @@ import { collectReviewContext, resolveReviewTarget } from '../git.mjs';
 import { AgyBrokerClient } from '../rpc-client.mjs';
 import { ensureBrokerSession, isBrokerAlive, loadBrokerSession } from '../broker-lifecycle.mjs';
 import { resolveClaudeSessionPath, extractClaudeContext } from '../claude-session-transfer.mjs';
+import { terminateProcess } from './cli-process.mjs';
 
 export const id = 'agy';
 export const binary = 'agy';
@@ -64,7 +65,8 @@ export function buildArgs({ job = {}, prompt, options = {} }) {
   if (agent) args.push('--agent', agent);
   if (conversation) args.push('--conversation', conversation);
   if (jsonSchema) args.push('--json-schema', jsonSchema);
-  if (job.jobClass !== 'review' && approveAll) args.push('--dangerously-skip-permissions');
+  if (job.jobClass !== 'review' && !options.readOnly && approveAll) args.push('--dangerously-skip-permissions');
+  if (job.jobClass === 'review' || options.readOnly) args.push('--mode', 'plan');
   return args;
 }
 
@@ -212,7 +214,7 @@ export async function runTaskViaBroker({ job = {}, prompt, options = {}, onProgr
   }
 }
 
-export function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, onStdoutLine, onStderrLine }, { spawnFn = spawn, cwd, useBroker = false } = {}) {
+export function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, onStdoutLine, onStderrLine }, { spawnFn = spawn, cwd, useBroker = false, env = process.env } = {}) {
   // If broker mode is enabled, use broker execution
   if (useBroker) {
     return runTaskViaBroker({ job, prompt, options, onProgress }, { cwd });
@@ -225,11 +227,12 @@ export function runTask({ job = {}, prompt, options = {}, onProgress = () => {},
     const baseline = cwd ? porcelainPaths(cwd) : null;
     let child;
     try {
-      const binaryName = options.binary ?? process.env.AGY_BINARY ?? binary;
+      const binaryName = options.binary ?? env.AGY_BINARY ?? binary;
       const isNodeScript = /\.(mjs|js|cjs)$/i.test(binaryName);
       const spawnCmd = isNodeScript ? process.execPath : binaryName;
       const spawnArgs = isNodeScript ? [binaryName, ...args] : args;
-      child = spawnFn(spawnCmd, spawnArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false, cwd });
+      child = spawnFn(spawnCmd, spawnArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false, detached: process.platform !== 'win32', cwd, env: { ...env, AGENT_DELEGATION_WORKER: '1' } });
+      child.on('spawn', () => onProgress({ type: 'spawn', pid: child.pid, binary: binaryName }));
     } catch (err) {
       reject(err);
       return;
@@ -337,19 +340,27 @@ export function runTask({ job = {}, prompt, options = {}, onProgress = () => {},
       onStderrLine?.(text);
     });
 
+    let timedOut = false;
+    const kill = () => { try { terminateProcess(child.pid); } catch {} };
+    process.once('SIGTERM', kill);
+    process.once('SIGINT', kill);
     const watchdog = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {}
-    }, (options.timeoutMs ?? DEFAULT_TIMEOUT_MS) + 60_000);
+      timedOut = true;
+      kill();
+    }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const cleanup = () => {
+      clearTimeout(watchdog);
+      process.removeListener('SIGTERM', kill);
+      process.removeListener('SIGINT', kill);
+    };
 
     child.on('error', (err) => {
-      clearTimeout(watchdog);
+      cleanup();
       reject(err);
     });
 
     child.on('close', (exitCode) => {
-      clearTimeout(watchdog);
+      cleanup();
       if (pending.trim()) handleLine(pending);
       let jsonEnvelope = null;
       if (!stream) {
@@ -358,13 +369,13 @@ export function runTask({ job = {}, prompt, options = {}, onProgress = () => {},
         } catch {}
       }
       const env = stream ? envelope : jsonEnvelope;
-      const agyStatus = env?.status ?? (exitCode === 0 ? 'SUCCESS' : 'ERROR');
-      const jobStatus = AGY_STATUS_TO_JOB_STATUS[agyStatus] ?? 'failed';
+      const agyStatus = env?.status ?? 'ERROR';
+      const jobStatus = timedOut || exitCode !== 0 || !env ? 'failed' : AGY_STATUS_TO_JOB_STATUS[agyStatus] ?? 'failed';
       resolve({
         status: jobStatus,
         agyStatus,
         response: env?.response ?? '',
-        error: env?.error ?? null,
+        error: timedOut ? `Executor timed out after ${options.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms` : env?.error ?? (jobStatus === 'failed' ? (stderrBuf.trim() || 'agy exited without a successful result') : null),
         conversationId: env?.conversation_id ?? null,
         usage: env?.usage ?? null,
         exitCode,
@@ -379,16 +390,7 @@ export function runTask({ job = {}, prompt, options = {}, onProgress = () => {},
 }
 
 export function cancelJob(pid) {
-  if (!pid) throw new Error('job has no pid to cancel');
-  if (process.platform === 'win32') {
-    const res = runCommand('taskkill', ['/pid', String(pid), '/T', '/F']);
-    if (res.code === 0) return;
-  }
-  try {
-    process.kill(pid);
-  } catch (err) {
-    if (err.code !== 'ESRCH') throw err;
-  }
+  return terminateProcess(pid);
 }
 
 export async function cancel() {

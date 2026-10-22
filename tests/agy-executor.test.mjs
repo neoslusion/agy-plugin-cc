@@ -88,7 +88,11 @@ test('registry exposes the agy adapter', () => {
   assert.equal(get('agy').id, 'agy');
   assert.equal(get('agy').binary, 'agy');
   assert.throws(() => get('nope'), /unknown executor/);
-  assert.deepEqual(list(), [{ id: 'agy', binary: 'agy' }]);
+  assert.deepEqual(list(), [
+    { id: 'agy', binary: 'agy', integrations: ['cli', 'acp'] },
+    { id: 'codex', binary: 'codex', integrations: ['cli', 'app-server'] },
+    { id: 'claude', binary: 'claude', integrations: ['cli', 'agent-sdk'] },
+  ]);
 });
 
 test('isPermissionDenied covers envelope errors, notices, and responses', () => {
