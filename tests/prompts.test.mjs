@@ -19,7 +19,7 @@ function loadSchema(name) {
 }
 
 test('schema files are valid JSON and parse as draft 2020-12', () => {
-  for (const name of ['review-output', 'stop-gate']) {
+  for (const name of ['review-output', 'stop-gate', 'supervisor-plan', 'supervisor-task-result']) {
     const schema = loadSchema(name);
     assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema');
     assert.equal(schema.type, 'object');

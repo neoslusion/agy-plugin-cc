@@ -80,7 +80,7 @@ async function main() {
   const dataRoot = env.CLAUDE_PLUGIN_DATA ?? join(tmpdir(), 'agy-companion');
   const root = resolveStateRoot(dataRoot, workspaceSlug(cwd));
 
-  if (payload.stop_hook_active === false || !getConfig(root).stopReviewGate) {
+  if (env.AGENT_DELEGATION_WORKER === '1' || payload.stop_hook_active === true || !getConfig(root).stopReviewGate) {
     return;
   }
 
@@ -89,11 +89,10 @@ async function main() {
 
   const prompt = renderPrompt(loadPrompt('stop-review-gate', PLUGIN_ROOT), { CLAUDE_RESPONSE_BLOCK: lastMessage });
   const companion = env.AGY_COMPANION_SCRIPT ?? join(PLUGIN_ROOT, 'scripts', 'agy-companion.mjs');
-  const schemaPath = join(PLUGIN_ROOT, 'schemas', 'stop-gate.schema.json');
   const timeoutMs = Number(env.AGY_GATE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
   const child = spawnSync(
     process.execPath,
-    [companion, 'task', '--json', '--json-schema', schemaPath, prompt],
+    [companion, 'gate', '--json', prompt],
     {
       encoding: 'utf8',
       timeout: timeoutMs,

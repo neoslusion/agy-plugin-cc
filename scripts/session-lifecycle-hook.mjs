@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { appendFileSync } from 'node:fs';
 import { resolveStateRoot } from './lib/state.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
-import { listJobs, readJobFile, upsertJob, isoNow } from './lib/state.mjs';
+import { listJobs, readJobFile, mutateJob, isoNow } from './lib/state.mjs';
 import { get } from './lib/executors/registry.mjs';
 import { loadBrokerSession, isBrokerAlive, ensureBrokerSession, sendBrokerShutdown } from './lib/broker-lifecycle.mjs';
 
@@ -42,6 +42,7 @@ function rootFor(cwd, env) {
 }
 
 async function onSessionStart(payload, env) {
+  if (env.AGENT_DELEGATION_WORKER === '1') return;
   const envFile = payload.env_file ?? env.CLAUDE_ENV_FILE;
   if (!envFile || !payload.session_id) return;
 
@@ -82,16 +83,14 @@ async function onSessionEnd(payload, env) {
   const sessionId = payload.session_id;
   if (!sessionId) return;
   const root = rootFor(payload.cwd, env);
-  const executor = get('agy');
-
-  // Cancel running jobs
+  // Cancel running jobs without signaling a process whose persisted identity is unknown.
   for (const job of listJobs(root)) {
     if (job.sessionId !== sessionId) continue;
     if (job.status !== 'running' && job.status !== 'queued') continue;
-    try {
-      await executor.cancel(job.pid);
-    } catch {}
-    upsertJob(root, { ...readJobFile(root, job.id) ?? job, status: 'cancelled', phase: 'cancelled', cancelledAt: isoNow() });
+    if (job.pid && job.processIdentity?.pid === job.pid) {
+      try { await get(job.executor).cancel(job.pid); } catch {}
+    }
+    mutateJob(root, job.id, current => ({ ...(current ?? job), status: 'cancelled', phase: 'cancelled', cancelledAt: isoNow() }));
   }
 
   // Shutdown broker if configured to auto-shutdown (default: keep alive for resume)

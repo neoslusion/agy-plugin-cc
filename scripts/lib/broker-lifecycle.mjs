@@ -99,6 +99,7 @@ export function loadBrokerSession(cwd) {
       endpoint: data.endpoint ?? null,
       pid: data.pid ?? null,
       startedAt: data.startedAt ?? null,
+      processIdentity: data.processIdentity ?? null,
       cwd: data.cwd ?? null,
       sessionDir: data.sessionDir ?? null
     };
@@ -137,11 +138,11 @@ export async function isBrokerAlive(session) {
 // process, so reap the recorded pid before starting a replacement.
 export function reapStaleBroker(session) {
   const pid = session?.pid;
-  if (!pid) return false;
+  if (!pid || session?.processIdentity?.pid !== pid) return false;
   try {
     process.kill(pid, 0);
   } catch {
-    return false; // already gone
+    return false;
   }
   try {
     if (process.platform === "win32") {
@@ -187,6 +188,7 @@ export async function ensureBrokerSession(cwd, options = {}) {
     endpoint,
     pid: child.pid,
     startedAt: new Date().toISOString(),
+    processIdentity: { pid: child.pid, binary: process.execPath, scriptPath, startedAt: new Date().toISOString() },
     cwd,
     sessionDir
   };

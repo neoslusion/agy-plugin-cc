@@ -12,6 +12,7 @@ import { binaryAvailable } from '../scripts/lib/process.mjs';
 // stays fully green offline.
 
 function agyAvailable() {
+  if (process.env.AGENT_LIVE_TESTS !== '1') return 'set AGENT_LIVE_TESTS=1 to run authenticated integration tests';
   if (!binaryAvailable('agy')) return 'agy binary not found on PATH';
   return false;
 }

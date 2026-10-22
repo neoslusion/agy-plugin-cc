@@ -15,7 +15,7 @@ function runHook(script, args, payload, env = {}) {
   const res = spawnSync(process.execPath, [join(PLUGIN_ROOT, 'scripts', script), ...args], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: { ...process.env, AGY_USE_BROKER: 'false', ...env },
     windowsHide: true,
   });
   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
@@ -99,16 +99,32 @@ test('SessionEnd hook cancels orphaned jobs for the session', async () => {
 test('stop gate no-ops when disabled', async () => {
   const { dir } = makeRoot();
   const transcript = makeTranscript(dir, 'I edited files.');
-  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: true, transcript_path: transcript, cwd: dir, session_id: 's' }, { CLAUDE_PLUGIN_DATA: dir });
+  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: false, transcript_path: transcript, cwd: dir, session_id: 's' }, { CLAUDE_PLUGIN_DATA: dir });
   assert.equal(res.status, 0);
   assert.equal(res.stdout, '');
+});
+
+test('stop gate skips repeated stops and delegated workers even when enabled', async () => {
+  const { dir, root } = makeRoot();
+  const { setConfig } = await import('../scripts/lib/state.mjs');
+  setConfig(root, { stopReviewGate: true });
+  const transcript = makeTranscript(dir, 'unfinished work');
+  for (const [active, worker] of [[true, ''], [false, '1']]) {
+    const result = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: active, transcript_path: transcript, cwd: dir }, {
+      CLAUDE_PLUGIN_DATA: dir, AGENT_DELEGATION_WORKER: worker, AGY_BINARY: FAKE_AGY,
+      FAKE_AGY_SCENARIO: JSON.stringify({ decision: 'BLOCK' }),
+    });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, '');
+    assert.equal(listJobs(root).length, 0);
+  }
 });
 
 test('stop gate allows when the model says ALLOW (via fake agy)', async () => {
   const { dir, root } = makeRoot();
   await runMain(['setup', '--enable-review-gate'], { cwd: dir, env: { ...process.env, CLAUDE_PLUGIN_DATA: dir }, out: { write: () => {} }, err: { write: () => {} } });
   const transcript = makeTranscript(dir, 'I finished the refactor and the tests pass.');
-  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: true, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
+  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: false, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
     CLAUDE_PLUGIN_DATA: dir,
     AGY_BINARY: FAKE_AGY,
     FAKE_AGY_SCENARIO: JSON.stringify({ decision: 'ALLOW', reason: 'work complete' }),
@@ -121,7 +137,7 @@ test('stop gate blocks with a reason (via fake agy)', async () => {
   const { dir } = makeRoot();
   await runMain(['setup', '--enable-review-gate'], { cwd: dir, env: { ...process.env, CLAUDE_PLUGIN_DATA: dir }, out: { write: () => {} }, err: { write: () => {} } });
   const transcript = makeTranscript(dir, 'About to run the migration now...');
-  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: true, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
+  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: false, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
     CLAUDE_PLUGIN_DATA: dir,
     AGY_BINARY: FAKE_AGY,
     FAKE_AGY_SCENARIO: JSON.stringify({ decision: 'BLOCK', reason: 'migration left mid-flight' }),
@@ -136,7 +152,7 @@ test('stop gate fails open on executor ERROR', async () => {
   const { dir } = makeRoot();
   await runMain(['setup', '--enable-review-gate'], { cwd: dir, env: { ...process.env, CLAUDE_PLUGIN_DATA: dir }, out: { write: () => {} }, err: { write: () => {} } });
   const transcript = makeTranscript(dir, 'half way through');
-  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: true, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
+  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: false, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
     CLAUDE_PLUGIN_DATA: dir,
     AGY_BINARY: FAKE_AGY,
     FAKE_AGY_SCENARIO: JSON.stringify({ status: 'ERROR', error: 'model unavailable' }),
@@ -168,7 +184,7 @@ test('stop gate fails open on timeout', async () => {
   const stub = join(dir, 'hanging-companion.mjs');
   writeFileSync(stub, "setTimeout(() => process.exit(0), 10000);\n");
   const transcript = makeTranscript(dir, 'half way through');
-  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: true, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
+  const res = runHook('stop-review-gate-hook.mjs', [], { stop_hook_active: false, transcript_path: transcript, cwd: dir, session_id: 'sess-gate' }, {
     CLAUDE_PLUGIN_DATA: dir,
     AGY_COMPANION_SCRIPT: stub,
     AGY_GATE_TIMEOUT_MS: '300',
