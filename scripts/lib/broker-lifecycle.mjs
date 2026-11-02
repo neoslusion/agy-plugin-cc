@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createBrokerEndpoint, parseBrokerEndpoint } from "./broker-endpoint.mjs";
 import { resolveStateRoot } from "./state.mjs";
+import { resolveDataRoot } from "./data-root.mjs";
 import { workspaceSlug } from "./workspace.mjs";
 
 export const BROKER_ENDPOINT_ENV = "AGY_COMPANION_APP_SERVER_ENDPOINT";
@@ -82,8 +83,7 @@ export function spawnBrokerProcess({ scriptPath, cwd, endpoint, pidFile, logFile
 }
 
 function resolveBrokerStateFile(cwd) {
-  const dataRoot = process.env.CLAUDE_PLUGIN_DATA ?? path.join(os.tmpdir(), 'agy-companion');
-  const stateRoot = resolveStateRoot(dataRoot, workspaceSlug(cwd));
+  const stateRoot = resolveStateRoot(resolveDataRoot(process.env), workspaceSlug(cwd));
   return path.join(stateRoot, BROKER_STATE_FILE);
 }
 

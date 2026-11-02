@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolveStateRoot, getConfig } from './lib/state.mjs';
+import { resolveDataRoot } from './lib/data-root.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
 import { loadPrompt, renderPrompt } from './lib/prompts.mjs';
 
@@ -77,7 +77,7 @@ async function main() {
   const payload = await readPayload();
   const env = process.env;
   const cwd = payload.cwd ?? process.cwd();
-  const dataRoot = env.CLAUDE_PLUGIN_DATA ?? join(tmpdir(), 'agy-companion');
+  const dataRoot = resolveDataRoot(env);
   const root = resolveStateRoot(dataRoot, workspaceSlug(cwd));
 
   if (env.AGENT_DELEGATION_WORKER === '1' || payload.stop_hook_active === true || !getConfig(root).stopReviewGate) {
@@ -96,7 +96,7 @@ async function main() {
     {
       encoding: 'utf8',
       timeout: timeoutMs,
-      env: { ...env, AGY_SESSION_ID: payload.session_id ?? '', CLAUDE_PLUGIN_DATA: dataRoot },
+      env: { ...env, AGY_SESSION_ID: payload.session_id ?? '', AGENT_DELEGATION_DATA: dataRoot },
       windowsHide: true,
       maxBuffer: 64 * 1024 * 1024,
     }

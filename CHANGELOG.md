@@ -7,6 +7,7 @@
 - Fix OpenCode workers running in the parent's directory: OpenCode takes its project from `PWD`, which a spawned process inherits unchanged.
 - Add an `advisor` option for Claude CLI roles and executors that passes `--advisor <model>` to the worker, report `advisorCalls` in its result, and add a notice when the worker's session disables the feature-flag fetching the advisor needs.
 - Require explicit `--approve-all` before a supervisor run executes project-configured `verifyCommands`, and add a security and trust-boundary document covering executable configuration, prompt injection, local state and provider policy.
+- Default task state to a per-user data directory instead of the system temporary directory, centralize its resolution, and migrate state left by older releases on first use.
 - Make agy opt-in and report a `policy` warning for it in `providers`: Google does not support orchestrating agy from third-party coding agents under consumer logins.
 - Fix the shared lock so concurrent writers stop colliding and a lock left behind by a killed process no longer wedges a task ID forever. The wait now uses a jittered backoff with a larger budget, and an abandoned lock is broken only once its recorded holder is confirmed gone and the file identity still matches, so a live holder is never locked out of its critical section.
 - Give the MCP delegation test enough headroom to assert that a zero-timeout wait returns without blocking while the worker is still running.

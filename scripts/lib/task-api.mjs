@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { parseArgs } from './args.mjs';
 import { resolveStateRoot, listJobs } from './state.mjs';
+import { resolveDataRoot } from './data-root.mjs';
 import { workspaceSlug } from './workspace.mjs';
 import { listSupervisors } from './supervisor-state.mjs';
 import { resolveResultJob } from './job-control.mjs';
@@ -16,7 +16,7 @@ export function taskSession(env) {
   return env.AGENT_SESSION_ID ?? env.CODEX_THREAD_ID ?? env.CLAUDE_SESSION_ID ?? env.CLAUDE_CODE_SESSION_ID ?? env.AGY_SESSION_ID ?? env.SESSION_ID ?? null;
 }
 export function dataBase(env) {
-  return env.AGENT_DELEGATION_DATA ?? env.CLAUDE_PLUGIN_DATA ?? env.PLUGIN_DATA ?? join(tmpdir(), 'agy-companion');
+  return resolveDataRoot(env);
 }
 export function taskRoot(cwd, env) {
   return resolveStateRoot(dataBase(env), workspaceSlug(cwd));

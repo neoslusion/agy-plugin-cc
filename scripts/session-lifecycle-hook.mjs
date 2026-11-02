@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { appendFileSync } from 'node:fs';
 import { resolveStateRoot } from './lib/state.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
 import { listJobs, readJobFile, mutateJob, isoNow } from './lib/state.mjs';
+import { resolveDataRoot } from './lib/data-root.mjs';
 import { get } from './lib/executors/registry.mjs';
 import { loadBrokerSession, isBrokerAlive, ensureBrokerSession, sendBrokerShutdown } from './lib/broker-lifecycle.mjs';
+
+const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 function readPayload() {
   return new Promise((resolve) => {
@@ -37,8 +38,7 @@ function readPayload() {
 }
 
 function rootFor(cwd, env) {
-  const dataRoot = env.CLAUDE_PLUGIN_DATA ?? join(tmpdir(), 'agy-companion');
-  return resolveStateRoot(dataRoot, workspaceSlug(cwd ?? process.cwd()));
+  return resolveStateRoot(resolveDataRoot(env), workspaceSlug(cwd ?? process.cwd()));
 }
 
 async function onSessionStart(payload, env) {
@@ -51,7 +51,7 @@ async function onSessionStart(payload, env) {
   const lines = [
     `AGY_SESSION_ID=${payload.session_id}`,
     `AGY_TRANSCRIPT_PATH=${payload.transcript_path ?? ''}`,
-    `CLAUDE_PLUGIN_DATA=${env.CLAUDE_PLUGIN_DATA ?? join(tmpdir(), 'agy-companion')}`,
+    `export AGENT_DELEGATION_DATA=${quote(resolveDataRoot(env))}`,
     ...(payload.permission_mode ? [`AGY_PERMISSION_MODE=${payload.permission_mode}`] : []),
     // Inherit agy approval from the live session: bypassPermissions means the
     // user already granted full autonomy to Claude itself.

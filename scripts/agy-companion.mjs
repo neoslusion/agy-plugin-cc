@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { resolveApproveAll } from './lib/approval.mjs';
+import { resolveDataRoot } from './lib/data-root.mjs';
 import { loadPrompt, renderPrompt } from './lib/prompts.mjs';
 import { workspaceSlug } from './lib/workspace.mjs';
 import {
@@ -46,7 +46,7 @@ function write(out, text) {
 }
 
 export async function runMain(argv, { cwd = process.cwd(), env = process.env, out = process.stdout, err = process.stderr, legacy = true } = {}) {
-  const dataRoot = env.AGENT_DELEGATION_DATA ?? env.CLAUDE_PLUGIN_DATA ?? env.PLUGIN_DATA ?? join(tmpdir(), 'agy-companion');
+  const dataRoot = resolveDataRoot(env);
   const [subcommand, ...rest] = argv;
   try {
     if (env.AGENT_DELEGATION_WORKER === '1' && ['task', 'plan', 'review', 'adversarial-review', 'gate'].includes(subcommand)) throw new Error('A delegated executor cannot recursively delegate another task');

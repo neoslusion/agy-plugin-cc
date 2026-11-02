@@ -45,7 +45,7 @@ test('SessionStart hook exports session env vars to the env file', () => {
   const text = readFileSync(envFile, 'utf8');
   assert.ok(text.includes('AGY_SESSION_ID=sess-42'));
   assert.ok(text.includes('AGY_TRANSCRIPT_PATH='));
-  assert.ok(text.includes('CLAUDE_PLUGIN_DATA='));
+  assert.ok(text.includes('AGENT_DELEGATION_DATA='));
 });
 
 test('SessionStart exports AGY_APPROVE_ALL only for bypassPermissions sessions', () => {

@@ -1,4 +1,3 @@
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readdirSync, rmSync } from 'node:fs';
@@ -7,10 +6,6 @@ import { withLock } from './lock.mjs';
 
 export const MAX_JOBS = 50;
 const STATE_VERSION = 1;
-
-export function pluginDataRoot() {
-  return process.env.CLAUDE_PLUGIN_DATA || join(tmpdir(), 'agy-companion');
-}
 
 export function resolveStateRoot(baseRoot, slug) {
   return join(baseRoot, 'state', slug);
