@@ -10,6 +10,7 @@
 - Default task state to a per-user data directory instead of the system temporary directory, centralize its resolution, and migrate state left by older releases on first use.
 - Split task publication into named steps, and return independent executor views instead of mutating registry singletons.
 - Add recorded Codex, Claude and OpenCode event fixtures with replay and end-to-end smoke tests, and document the provider capability matrix, event contracts and fixture-refresh procedure.
+- Restructure the README around a quick start, and move detailed configuration and supervisor guidance into dedicated documentation.
 - Make agy opt-in and report a `policy` warning for it in `providers`: Google does not support orchestrating agy from third-party coding agents under consumer logins.
 - Fix the shared lock so concurrent writers stop colliding and a lock left behind by a killed process no longer wedges a task ID forever. The wait now uses a jittered backoff with a larger budget, and an abandoned lock is broken only once its recorded holder is confirmed gone and the file identity still matches, so a live holder is never locked out of its critical section.
 - Give the MCP delegation test enough headroom to assert that a zero-timeout wait returns without blocking while the worker is still running.

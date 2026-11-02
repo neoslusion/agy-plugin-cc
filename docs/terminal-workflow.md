@@ -28,6 +28,16 @@ Every external delegation pins an immutable context snapshot. To supply acceptan
 
 `watch` reads persisted events without model calls. Omit the ID to watch visible tasks in this parent, including tasks discovered while watching. JSON mode emits newline-delimited event envelopes and a final `watch.end` with cursors and `watchTimedOut`. Resume a single task with `--after N`. Stopping the observer does not stop workers, and watching does not acknowledge completion notifications. A session watch finishes when its current tasks and children are ready; it is not a permanent daemon waiting for future assignments.
 
+In Claude Code the plugin also provides these commands as MCP tools
+(`mcp__plugin_agent-delegation_delegation__*`): `delegate_task`, `task_follow_up`, `task_status`,
+`task_wait`, `task_steer`, `task_interrupt`, `task_cancel` and `delegation_capabilities`. Tasks are
+scoped to the Claude session and share state with the runner, so `tasks` shows them too.
+`delegate_task` and `task_follow_up` return a `wakeCommand` (`wait TASK_ID --wake`) that blocks
+until the task has a result, needs input or loses its worker. The host runs it as a background Bash
+command and ends its turn; the command's exit re-invokes the host, including in `claude -p`. Allow
+it with the permission rule `Bash(AGENT_DELEGATION_DATA=*)`. Codex hosts keep the runner commands
+and next-prompt hooks.
+
 ## Continue or switch providers
 
 ```text

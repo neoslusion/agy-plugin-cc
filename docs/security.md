@@ -36,6 +36,17 @@ Generic `delegate`/`task` calls require `--approve-all` per dispatch for write o
 Planner, advisor, explorer, monitor and reviewer roles suppress bypass flags even when approval is
 supplied, and review subcommands always run read-only.
 
+Without approval, Codex uses its read-only sandbox; Claude uses plan mode with a read-only tool
+inventory; OpenCode uses its `plan` agent; agy uses its headless permission handling. Claude SDK
+writers authorize their bounded tool inventory through SDK permission callbacks; questions are
+reported as blockers. ACP requires advertised permission modes and a separately installed endpoint.
+The parent still verifies results. Authentication and provider policy remain controlled by each
+provider.
+
+The legacy agy commands retain their existing approval settings. The new plugin does not enable a
+stop-review gate or start the legacy broker. Workers receive `AGENT_DELEGATION_WORKER=1` to prevent
+recursive delegation through this runner and the legacy hooks.
+
 ## Prompt injection
 
 Repository content, issue text, dependency output and worker transcripts are untrusted input. A
