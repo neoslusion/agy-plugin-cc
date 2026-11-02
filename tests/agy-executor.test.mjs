@@ -92,6 +92,7 @@ test('registry exposes the agy adapter', () => {
     { id: 'agy', binary: 'agy', integrations: ['cli', 'acp'] },
     { id: 'codex', binary: 'codex', integrations: ['cli', 'app-server'] },
     { id: 'claude', binary: 'claude', integrations: ['cli', 'agent-sdk'] },
+    { id: 'opencode', binary: 'opencode', integrations: ['cli'] },
   ]);
 });
 

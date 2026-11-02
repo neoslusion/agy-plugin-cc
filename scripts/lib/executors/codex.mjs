@@ -6,11 +6,18 @@ import { cliPreflight, runCli, terminateProcess } from './cli-process.mjs';
 
 export function buildCodexArgs({ job = {}, options = {} }) {
   if (options.agent) throw new Error('codex executor does not support --agent; select a model or use native host subagents');
-  const args = ['-a', 'never'];
+  const args = [];
   const approve = job.jobClass !== 'review' && !options.readOnly && options.approveAll;
+  // The bypass flag already disables approvals; Codex 0.163 rejects it together with -a.
   if (approve) args.push('--dangerously-bypass-approvals-and-sandbox');
-  else args.push('--sandbox', 'read-only');
+  else args.push('-a', 'never', '--sandbox', 'read-only');
   if (options.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(options.effort)}`);
+  if (options.advisorServer) {
+    const { name, command, args: serverArgs } = options.advisorServer;
+    // Codex requires approval for MCP tools and never prompts here; consultations can take minutes.
+    args.push('-c', `mcp_servers.${name}.command=${JSON.stringify(command)}`, '-c', `mcp_servers.${name}.args=${JSON.stringify(serverArgs)}`,
+      '-c', `mcp_servers.${name}.default_tools_approval_mode="approve"`, '-c', `mcp_servers.${name}.tool_timeout_sec=900`);
+  }
   args.push('exec');
   if (options.conversation) args.push('resume');
   args.push('--json', '--skip-git-repo-check');

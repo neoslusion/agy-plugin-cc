@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an OpenCode executor (`opencode run --format json`) with session follow-ups, read-only roles on its `plan` agent, step usage and edited-file reporting, and make it the starter and fallback default executor. It cannot fill schema-constrained supervisor roles.
+- Add `advisorRole` for any worker: a configured advisor answers the worker's `consult_advisor` MCP tool calls mid-turn and reviews every finished, failed or blocked turn, resuming the worker's session with REVISE guidance within `advisorRounds` and reporting escalations to the parent in `result.advisor`.
+- Fix OpenCode workers running in the parent's directory: OpenCode takes its project from `PWD`, which a spawned process inherits unchanged.
+- Add an `advisor` option for Claude CLI roles and executors that passes `--advisor <model>` to the worker, report `advisorCalls` in its result, and add a notice when the worker's session disables the feature-flag fetching the advisor needs.
+- Make agy opt-in and report a `policy` warning for it in `providers`: Google does not support orchestrating agy from third-party coding agents under consumer logins.
 - Fix the shared lock so concurrent writers stop colliding and a lock left behind by a killed process no longer wedges a task ID forever. The wait now uses a jittered backoff with a larger budget, and an abandoned lock is broken only once its recorded holder is confirmed gone and the file identity still matches, so a live holder is never locked out of its critical section.
 - Give the MCP delegation test enough headroom to assert that a zero-timeout wait returns without blocking while the worker is still running.
 

@@ -41,7 +41,7 @@ test('both host manifests package a skill whose runner works from an isolated ca
       env: { ...process.env, AGENT_DELEGATION_DATA: cache, CODEX_BINARY: '', CLAUDE_BINARY: '', AGY_ACP_BINARY: '', PATH: '' },
     });
     assert.equal(report.status, command === 'doctor' ? 0 : 1, report.stderr);
-    assert.equal(command === 'doctor' ? JSON.parse(report.stdout).tasks.length : JSON.parse(report.stdout).providers.length, command === 'doctor' ? 1 : 3);
+    assert.equal(command === 'doctor' ? JSON.parse(report.stdout).tasks.length : JSON.parse(report.stdout).providers.length, command === 'doctor' ? 1 : 4);
   }
   const configured = spawnSync(process.execPath, [runner, 'configure', '--host', 'claude'], {
     cwd: cache, encoding: 'utf8', windowsHide: true,

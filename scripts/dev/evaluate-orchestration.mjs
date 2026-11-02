@@ -84,7 +84,7 @@ export async function evaluateBehavior(argv, context = {}) {
   if (positionals.length || !['codex', 'claude'].includes(opts.host)) throw new Error('Use --host codex|claude [--config FILE] [--model MODEL] [--case NAME]');
   const config = loadDelegationConfig(context.cwd ?? process.cwd(), opts.config);
   if (opts.executor) {
-    if (!['codex', 'claude', 'agy'].includes(opts.executor)) throw new Error('--executor must be codex, claude or agy');
+    if (!['codex', 'claude', 'opencode', 'agy'].includes(opts.executor)) throw new Error('--executor must be codex, claude, opencode or agy');
     config.defaultExecutor = opts.executor;
     config.roles = { ...config.roles, executor: { executor: opts.executor, purpose: 'executor', transport: 'cli' } };
   }

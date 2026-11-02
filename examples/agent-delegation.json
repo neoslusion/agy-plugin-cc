@@ -1,7 +1,7 @@
 {
   "orchestrator": {
     "host": "codex",
-    "model": "gpt-6-astra",
+    "model": "gpt-6-luna",
     "effort": "medium",
     "instructions": "Plan and verify in the parent session. Delegate implementation after defining acceptance criteria."
   },
@@ -10,23 +10,24 @@
     "maxIterations": 4,
     "maxWorkers": 4,
     "plannerRole": "planner",
-    "executorRole": "executor",
+    "executorRole": "implementer",
     "reviewerRole": "reviewer",
     "monitorRole": "monitor",
     "verifyCommands": [["npm", "test"]]
   },
-  "defaultExecutor": "agy",
+  "defaultExecutor": "opencode",
   "executors": {
-    "agy": { "effort": "medium" },
+    "opencode": { "model": "opencode/glm-5.3-flash-free" },
     "codex": { "integration": "app-server", "effort": "high" },
     "claude": { "integration": "agent-sdk", "effort": "high" }
   },
   "roles": {
-    "planner": { "executor": "codex", "transport": "auto", "purpose": "planner", "model": "gpt-6-astra", "effort": "medium" },
+    "planner": { "executor": "codex", "transport": "auto", "purpose": "planner", "model": "gpt-6-luna", "effort": "medium" },
     "advisor": { "executor": "claude", "transport": "auto", "purpose": "advisor" },
     "monitor": { "executor": "claude", "purpose": "monitor" },
-    "executor": { "executor": "agy", "purpose": "executor" },
-    "reviewer": { "executor": "codex", "transport": "auto", "purpose": "reviewer", "model": "gpt-6-astra", "effort": "low" },
+    "executor": { "executor": "opencode", "purpose": "executor" },
+    "implementer": { "executor": "codex", "purpose": "executor" },
+    "reviewer": { "executor": "codex", "transport": "auto", "purpose": "reviewer", "model": "gpt-6-luna", "effort": "low" },
     "document": { "executor": "claude" }
   }
 }

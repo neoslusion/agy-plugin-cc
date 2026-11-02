@@ -11,6 +11,8 @@ import { runCommand } from '../scripts/lib/process.mjs';
 import { makeTempDir } from '../scripts/lib/fs.mjs';
 import { readTaskContext } from '../scripts/lib/task-context.mjs';
 import { readTaskEvents, pendingNotifications } from '../scripts/lib/task-events.mjs';
+import { runSupervisor } from '../scripts/lib/supervisor.mjs';
+import { taskRoot } from '../scripts/lib/task-api.mjs';
 
 const fake = join(import.meta.dirname, 'fixtures', 'fake-executor.mjs');
 
@@ -280,4 +282,12 @@ test('monitor runs only after a failed evidence gate and cannot bypass rejection
   assert.equal(readTaskEvents(c.root, record.id).filter(e => e.type === 'monitor.result').length, 1);
   assert.equal(readTaskEvents(c.root, record.id).at(-1).type, 'task.failed');
   assert.match(readTaskContext(c.root, record.context.id).payload.evidence[0], /Monitor recommendation/);
+});
+
+test('supervisor rejects a role without structured output before creating a run', async () => {
+  const cwd = makeTempDir('supervisor-structured-');
+  writeFileSync(join(cwd, '.agent-delegation.json'), JSON.stringify({ supervisor: { executorRole: 'executor' }, roles: { executor: { executor: 'opencode' } } }));
+  const env = { ...process.env, AGENT_DELEGATION_DATA: cwd, AGENT_SESSION_ID: 'structured' };
+  await assert.rejects(() => runSupervisor({ cwd, env, task: 'anything' }), /executor routes to opencode\/cli, which has no schema-constrained output/);
+  assert.deepEqual(listSupervisors(taskRoot(cwd, env)), []);
 });

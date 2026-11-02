@@ -14,6 +14,7 @@ import { createTaskContext, contextReference, readTaskContext } from './task-con
 import { appendTaskEvent } from './task-events.mjs';
 import { visibleTasks, selectTask, waitForTask, renderTaskSnapshot, TERMINAL_TASKS } from './task-view.mjs';
 import { waitBudget } from './terminal-tasks.mjs';
+import { advisorExecution } from './advisor.mjs';
 
 const worker = resolve(import.meta.dirname, '../task-worker.mjs');
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -23,7 +24,7 @@ function dispatchRoute(config, opts, previous) {
   const sameProvider = previous && (!opts.executor || opts.executor === previous.executor) && (!opts.integration || opts.integration === (previous.integration ?? 'cli')) && (!opts.role || opts.role === previous.role);
   const inherited = previous ? { executor: previous.executor, integration: previous.integration ?? 'cli', model: previous.model ?? undefined, ...previous.execution } : {};
   return resolveRoute(config, {
-    ...(sameProvider ? Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'timeout-ms'].filter(key => inherited[key] !== undefined).map(key => [key, inherited[key]])) : {}),
+    ...(sameProvider ? Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms'].filter(key => inherited[key] !== undefined).map(key => [key, inherited[key]])) : {}),
     ...(previous && !opts.role && previous.role ? { role: previous.role } : {}),
     ...(previous && (!opts.role || opts.role === previous.role) ? { executor: opts.executor ?? previous.executor } : {}),
     ...opts,
@@ -57,15 +58,16 @@ export async function runDispatch(command, argv, context = {}) {
     const route = dispatchRoute(config, opts, previous);
     if (route.transport === 'native') throw new Error(`Role ${route.role} uses native ${route.executor} agent ${route.nativeAgent}; dispatch through the host or explicitly pass --executor ${route.executor}`);
     const adapter = get(route.executor, route.integration);
-    requireCapabilities(route.executor, { integration: route.integration, agent: route.agent, jsonSchema: opts['json-schema'] });
+    requireCapabilities(route.executor, { integration: route.integration, agent: route.agent, advisor: route.advisor, jsonSchema: opts['json-schema'] });
     if (route['timeout-ms'] !== undefined && (!Number.isSafeInteger(Number(route['timeout-ms'])) || Number(route['timeout-ms']) <= 0 || Number(route['timeout-ms']) > 2147000000)) throw new Error('Executor timeout must be a positive integer below 2147000001');
     const timeoutMs = waitBudget(opts['wait-timeout-ms']);
     const sameSession = previous && !opts.fresh && previous.executor === route.executor && (previous.integration ?? 'cli') === route.integration;
     if (sameSession && !previous.conversationId) throw new Error('Previous task has no native session; use --fresh for an explicit handoff');
     let snapshot = opts['context-id'] ? readTaskContext(root, opts['context-id'], opts['context-revision'] === undefined ? null : Number(opts['context-revision'])) : previous?.context ? readTaskContext(root, previous.context.id, previous.context.revision) : null;
-    const execution = { ...Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'timeout-ms', 'instructions', 'readOnly', 'purpose'].filter(key => route[key] !== undefined).map(key => [key, route[key]])), json: true, 'approve-all': opts['approve-all'] === true && !route.readOnly,
+    const execution = { ...Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms', 'instructions', 'readOnly', 'purpose'].filter(key => route[key] !== undefined).map(key => [key, route[key]])), json: true, 'approve-all': opts['approve-all'] === true && !route.readOnly,
       conversation: sameSession ? previous.conversationId : null, 'json-schema': opts['json-schema'],
       ...(snapshot ? { 'context-id': snapshot.id, 'context-revision': String(snapshot.revision) } : {}),
+      ...advisorExecution(config, route),
     };
     const identity = fingerprint({ prompt, execution, previousTaskId: previous?.id ?? null, context: snapshot ? contextReference(snapshot) : null });
     const id = opts['request-id'] ? `task-${fingerprint([sessionId, opts['request-id']]).slice(0, 24)}` : generateJobId('task');

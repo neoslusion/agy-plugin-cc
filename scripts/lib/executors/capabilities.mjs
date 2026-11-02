@@ -5,7 +5,8 @@ const RICH = {
 };
 
 export function executorCapabilities(executor, integration = 'cli') {
-  if (integration === 'cli') return { executor, integration, resume: true, structuredOutput: true, steering: false, interrupt: false, approvals: false };
+  // OpenCode's CLI has no schema-constrained output mode.
+  if (integration === 'cli') return { executor, integration, resume: true, structuredOutput: executor !== 'opencode', steering: false, interrupt: false, approvals: false };
   const capabilities = RICH[integration];
   if (!capabilities || capabilities.executor !== executor) throw new Error(`${executor} does not support integration ${integration}`);
   return { ...capabilities, integration };
@@ -15,5 +16,6 @@ export function requireCapabilities(executor, options) {
   const capabilities = executorCapabilities(executor, options.integration);
   if (options.jsonSchema && !capabilities.structuredOutput) throw new Error(`${capabilities.integration} does not support schema-constrained output; select cli for structured supervisor tasks`);
   if (options.agent && capabilities.integration !== 'cli') throw new Error('--agent is only supported by cli integration');
+  if (options.advisor && (executor !== 'claude' || capabilities.integration !== 'cli')) throw new Error('advisor is only supported by the claude executor with cli integration');
   return capabilities;
 }

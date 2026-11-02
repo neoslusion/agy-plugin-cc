@@ -15,13 +15,15 @@ export function defaultConfiguration(host) {
   return {
     orchestrator: { host },
     automation: { mode: 'auto', maxParallel: 4 },
-    supervisor: { maxIterations: 4, maxWorkers: 2, plannerRole: 'planner', executorRole: 'executor', reviewerRole: 'reviewer', verifyCommands: [] },
-    defaultExecutor: 'agy',
+    // Supervisor turns need schema-constrained output, which OpenCode lacks, so its writer stays on the host.
+    supervisor: { maxIterations: 4, maxWorkers: 2, plannerRole: 'planner', executorRole: 'implementer', reviewerRole: 'reviewer', verifyCommands: [] },
+    defaultExecutor: 'opencode',
     executors: {},
     roles: {
       planner: { executor: host, transport: 'auto', purpose: 'planner' },
       advisor: { executor: host, transport: 'auto', purpose: 'advisor' },
-      executor: { executor: 'agy', purpose: 'executor' },
+      executor: { executor: 'opencode', purpose: 'executor' },
+      implementer: { executor: host, purpose: 'executor' },
       reviewer: { executor: host, transport: 'auto', purpose: 'reviewer' },
     },
   };

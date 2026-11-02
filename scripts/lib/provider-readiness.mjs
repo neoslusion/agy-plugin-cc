@@ -84,7 +84,10 @@ export async function providerReadiness(executor, integration, { cwd, env = proc
   const report = { executor, integration, binary, available: runtime ? runtime.status === 'ready' : Boolean(binary),
     protocolVerified: false, authenticated: null, models: null, modelAccessVerified: false, capabilities,
     probeIntegration: executor === 'codex' ? 'app-server' : executor === 'claude' ? 'agent-sdk' : integration,
-    ...(runtime ? { runtime } : {}) };
+    ...(runtime ? { runtime } : {}),
+    // Google's FAQ and a Google forum moderator (discuss.ai.google.dev/t/187241, 2026-10-08) say third-party agents
+    // orchestrating agy under a consumer login is unsupported and can trigger account suspension.
+    ...(executor === 'agy' ? { policy: 'Google does not support orchestrating agy from third-party coding agents under a consumer (Free/Pro/Ultra) login and may suspend the account. Use a Gemini API key or Enterprise login, or another executor.' } : {}) };
   if (!report.available) return { ...report, hint: integration === 'acp' ? 'Run acp-setup --check, then acp-setup --install if missing.' : `Install ${executor} or set ${executor.toUpperCase()}_BINARY.` };
   if (!probe) return { ...report, hint: 'Executable found; use providers --probe to check the supported interface. Model access is verified only by a completed task.' };
   try {
@@ -113,7 +116,7 @@ export async function runProviderReadiness(argv, context = {}) {
     if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000)) throw new Error('Probe timeout must be an integer from 1 to 60000ms');
     const routes = opts.role || opts.executor ? [{ name: opts.role ?? opts.executor, ...resolveRoute(config, opts) }]
       : Object.keys(config.roles).length ? Object.keys(config.roles).map(name => ({ name, ...resolveRoute(config, { role: name, host: opts.host }) }))
-        : ['codex', 'claude', 'agy'].map(executor => ({ name: executor, ...resolveRoute(config, { executor }) }));
+        : ['codex', 'claude', 'opencode', 'agy'].map(executor => ({ name: executor, ...resolveRoute(config, { executor }) }));
     const reports = new Map();
     for (const route of routes) {
       const key = `${route.executor}/${route.integration}`;

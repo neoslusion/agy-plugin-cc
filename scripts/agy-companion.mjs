@@ -23,6 +23,7 @@ import { loadDelegationConfig, resolveRoute } from './lib/delegation-config.mjs'
 import { resolveSupervisor, finishSupervisor } from './lib/supervisor-state.mjs';
 import { contextPrompt, contextReference, readTaskContext } from './lib/task-context.mjs';
 import { appendTaskEvent } from './lib/task-events.mjs';
+import { adviseTurns, advisorServer } from './lib/advisor.mjs';
 
 const PLUGIN_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
@@ -109,7 +110,7 @@ function usage() {
     '  cancel <job-id|prefix>',
     '  task-resume-candidate --json',
     '  config | executors',
-    '  shared options: --executor agy|codex|claude --role NAME --config FILE --cwd DIR --session-id ID',
+    '  shared options: --executor opencode|codex|claude|agy --role NAME --config FILE --cwd DIR --session-id ID',
     '  task input: --prompt-file FILE (preserves quoting and newlines)',
   ].join('\n');
 }
@@ -162,6 +163,7 @@ function runOptions(opts, ctx, extra = {}) {
     model: opts.model,
     effort: opts.effort,
     agent: opts.agent,
+    advisor: opts.advisor,
     readOnly: opts.readOnly === true,
     conversation: extra.conversation ?? opts.conversation ?? null,
     approveAll: ctx.legacy ? resolveApproveAll({
@@ -223,17 +225,25 @@ export async function runForeground(ctx, job, opts, extra = {}) {
     job.request = `${contextPrompt(ctx.root, job.context)}\n\nAssignment:\n${job.request}`;
   }
   if (!job.logFile) createJobLogFile(ctx.root, job);
+  const advisorRoute = ctx.legacy ? null : opts['advisor-route'] ?? null;
+  if (advisorRoute && options.integration === 'cli') options.advisorServer = advisorServer(ctx.root, job.id);
   const final = await runTrackedJob({
     root: ctx.root,
     job,
     run: async (progress) => {
       const handlers = buildProgressHandlers(ctx, job, progress);
-      const result = await executor.runTask(
-        { job, prompt: job.request, options, ...handlers },
-        { cwd: job.workspaceRoot ?? ctx.cwd, env: ctx.env }
-      );
-      progress.update({ conversationId: result.conversationId });
-      return result;
+      const turn = async (prompt, conversation) => {
+        const result = await executor.runTask(
+          { job, prompt, options: conversation ? { ...options, conversation } : options, ...handlers },
+          { cwd: job.workspaceRoot ?? ctx.cwd, env: ctx.env }
+        );
+        progress.update({ conversationId: result.conversationId });
+        return result;
+      };
+      const result = await turn(job.request);
+      if (!advisorRoute) return result;
+      return adviseTurns({ root: ctx.root, job, route: advisorRoute, rounds: opts['advisor-rounds'] ?? 2, result, resume: turn, env: ctx.env,
+        isCancelled: () => readJobFile(ctx.root, job.id)?.status === 'cancelled' });
     },
   });
   const res = final.result ?? {};

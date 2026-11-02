@@ -8,13 +8,13 @@ node "<runner>" configure --cwd "<project>" --host codex
 
 For Claude Code use `--host claude`. This creates `.agent-delegation.json` if absent, adds a managed instruction block to AGENTS.md or CLAUDE.md, and generates native agent definitions for the selected host. Existing instructions and unrelated agents are preserved. Edited generated agents cause a conflict instead of being overwritten. `--dry-run` previews paths without writing. `--config <file>` uses an existing alternative configuration.
 
-The default has a planner, advisor, and reviewer on the selected host, plus an agy executor. Model fields are omitted so each CLI uses its own configured default. Only workers actually selected need to be installed/authenticated. Edit the config to set each model explicitly.
+The default has a planner, advisor, and reviewer on the selected host, plus an OpenCode executor. agy is opt-in: Google does not support orchestrating it from third-party coding agents under a consumer login (see the README). Model fields are omitted so each CLI uses its own configured default. Only workers actually selected need to be installed/authenticated. Edit the config to set each model explicitly.
 
 - `orchestrator`: `host` (codex or claude), optional `model`, `effort`, and `instructions`.
 - `automation`: `mode` (auto or manual), `maxParallel` (1–16, default 4).
-- `defaultExecutor`: agy, codex, or claude.
-- `executors`: per-executor defaults for `model`, `effort`, `agent`, `timeoutMs`, and `integration` (`cli`, Codex `app-server`, Claude `agent-sdk`, or agy `acp`).
-- `roles`: named entries with `executor`, `transport` (auto/native/cli), `purpose` (planner/advisor/executor/reviewer/explorer/tester/monitor), optional `instructions`, and executor options.
+- `defaultExecutor`: opencode, codex, claude, or agy.
+- `executors`: per-executor defaults for `model`, `effort`, `agent`, `advisor` (Claude CLI only), `timeoutMs`, and `integration` (`cli`, Codex `app-server`, Claude `agent-sdk`, or agy `acp`).
+- `roles`: named entries with `executor`, `transport` (auto/native/cli), `purpose` (planner/advisor/executor/reviewer/explorer/tester/monitor), optional `instructions`, optional `advisorRole` (another role that reviews each finished turn and answers the worker's `consult_advisor` calls) with `advisorRounds` (corrective resumes, 0–5, default 2), and executor options.
 - `supervisor`: `maxIterations` (1–16), the enforced concurrent `maxWorkers` limit (1–16), role names for `plannerRole`/`executorRole`/`reviewerRole`, optional `monitorRole`, and `verifyCommands` as an array of argv arrays.
 
 Purpose defaults to a recognized role name (including plan/advise/implement/review/explore/test aliases), or executor for custom names. Native roles use generated definitions; `agent` overrides are supported only with CLI integration. `timeoutMs` applies to external jobs; native lifecycle and timeout controls belong to the host. Transport and integration are separate: a native route uses the host's tool, while external tasks use the configured interface.

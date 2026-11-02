@@ -10,6 +10,11 @@ export function buildClaudeArgs({ job = {}, options = {}, cwd = process.cwd() })
   if (options.model) args.push('--model', options.model);
   if (options.effort) args.push('--effort', options.effort);
   if (options.agent) args.push('--agent', options.agent);
+  if (options.advisor) args.push('--advisor', options.advisor);
+  if (options.advisorServer) {
+    const { name, command, args: serverArgs } = options.advisorServer;
+    args.push('--mcp-config', JSON.stringify({ mcpServers: { [name]: { command, args: serverArgs } } }), '--allowedTools', `mcp__${name}__consult_advisor`);
+  }
   if (options.conversation) args.push('--resume', options.conversation);
   if (options.jsonSchema) {
     const value = String(options.jsonSchema);
@@ -21,15 +26,20 @@ export function buildClaudeArgs({ job = {}, options = {}, cwd = process.cwd() })
 
 export async function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, ...handlers }, { cwd, env = process.env } = {}) {
   const result = { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] };
-  let terminal = false;
+  let terminal = false, advisorOff = false;
+  if (options.advisor) result.advisorCalls = 0;
   const output = await runCli({
     binary: options.binary ?? env.CLAUDE_BINARY ?? 'claude', args: buildClaudeArgs({ job, options, cwd }),
     prompt, cwd, env: { ...env, AGENT_DELEGATION_WORKER: '1' }, timeoutMs: options.timeoutMs, onProgress, ...handlers,
     onEvent(event) {
       if (event.session_id) result.conversationId = event.session_id;
+      // Claude Code enables the advisor through a fetched feature flag; the variables that disable
+      // flag fetching also disable analytics, so a requested advisor is silently dropped.
+      if (event.type === 'system' && event.subtype === 'init' && options.advisor && event.analytics_disabled === true) advisorOff = true;
       if (event.type === 'assistant') {
         for (const block of event.message?.content ?? []) {
           if (block.type === 'tool_use') onProgress({ type: 'tool', name: block.name });
+          if (block.type === 'server_tool_use' && block.name === 'advisor') { result.advisorCalls += 1; onProgress({ type: 'tool', name: 'advisor' }); }
         }
       }
       if (event.type === 'result') {
@@ -49,7 +59,8 @@ export async function runTask({ job = {}, prompt, options = {}, onProgress = () 
   if (options.jsonSchema && result.status === 'completed' && result.structuredOutput === null) {
     result.status = 'failed'; result.error = 'Claude returned no structured output';
   }
-  return { ...result, exitCode: output.exitCode, notice: output.stderr.trim() || null };
+  const advisorNotice = advisorOff ? `advisor ${options.advisor} is likely off: this Claude session disables feature-flag fetching (e.g. CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC or DISABLE_TELEMETRY)` : null;
+  return { ...result, exitCode: output.exitCode, notice: [output.stderr.trim(), advisorNotice].filter(Boolean).join('\n') || null };
 }
 
 export const claudeExecutor = { id: 'claude', binary: 'claude', preflight: opts => cliPreflight('claude', opts), runTask, collectContext, cancel: terminateProcess };

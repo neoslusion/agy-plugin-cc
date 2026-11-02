@@ -1,13 +1,14 @@
 import { agyExecutor } from './agy.mjs';
 import { codexExecutor } from './codex.mjs';
 import { claudeExecutor } from './claude.mjs';
+import { opencodeExecutor } from './opencode.mjs';
 import { runCodexAppServer } from './codex-app-server.mjs';
 import { runClaudeAgentSdk } from './claude-agent-sdk.mjs';
 import { runAntigravityAcp } from './managed-antigravity-acp.mjs';
 import { executorCapabilities, requireCapabilities } from './capabilities.mjs';
 import { findAntigravityRuntime } from '../antigravity-runtime.mjs';
 
-const REGISTRY = { agy: agyExecutor, codex: codexExecutor, claude: claudeExecutor };
+const REGISTRY = { agy: agyExecutor, codex: codexExecutor, claude: claudeExecutor, opencode: opencodeExecutor };
 
 export function get(id, integration = 'cli') {
   const executor = Object.hasOwn(REGISTRY, id) ? REGISTRY[id] : null;
@@ -29,5 +30,5 @@ export function get(id, integration = 'cli') {
 }
 
 export function list() {
-  return Object.values(REGISTRY).map((e) => ({ id: e.id, binary: e.binary, integrations: ['cli', e.id === 'codex' ? 'app-server' : e.id === 'claude' ? 'agent-sdk' : 'acp'] }));
+  return Object.values(REGISTRY).map((e) => ({ id: e.id, binary: e.binary, integrations: { codex: ['cli', 'app-server'], claude: ['cli', 'agent-sdk'], agy: ['cli', 'acp'] }[e.id] ?? ['cli'] }));
 }

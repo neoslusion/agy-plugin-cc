@@ -45,8 +45,21 @@ if (worker && !supervisorStage && process.env.FAKE_EXECUTOR_BARRIER) {
 if (scenario.hang && !supervisorStage) await new Promise(resolve => setTimeout(resolve, 60_000));
 if (scenario.malformed && !supervisorStage) { console.log('broken JSON'); process.exit(0); }
 if (scenario.noResult && !supervisorStage) process.exit(0);
-const response = scenario.response ?? 'PONG\n';
-const fail = Boolean(scenario.fail && !supervisorStage);
+// With FAKE_EXECUTOR_STATE set, calls are recorded and scripted in order: advisor prompts answer
+// with scenario.advisorReplies and worker turns with scenario.turns ({ response, fail }).
+let scripted = null;
+if (process.env.FAKE_EXECUTOR_STATE) {
+  const statePath = process.env.FAKE_EXECUTOR_STATE;
+  let state = { advisor: [], worker: [] };
+  try { state = JSON.parse(readFileSync(statePath, 'utf8')); } catch {}
+  const advising = prompt.includes('You are the advisor for a delegated coding worker');
+  const calls = advising ? state.advisor : state.worker;
+  scripted = advising ? { response: scenario.advisorReplies?.[calls.length] ?? 'APPROVE', fail: Boolean(scenario.advisorFail) } : scenario.turns?.[calls.length] ?? null;
+  calls.push({ args, prompt });
+  writeFileSync(statePath, JSON.stringify(state));
+}
+const response = scripted?.response ?? scenario.response ?? 'PONG\n';
+const fail = scripted ? Boolean(scripted.fail) : Boolean(scenario.fail && !supervisorStage);
 function readSchema() {
   const raw = value(args.includes('--output-schema') ? '--output-schema' : '--json-schema');
   if (!raw) return null;

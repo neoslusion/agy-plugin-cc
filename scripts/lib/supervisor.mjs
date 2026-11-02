@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appendLogLine, createJobRecord, runTrackedJob } from './tracked-jobs.mjs';
 import { get } from './executors/registry.mjs';
+import { executorCapabilities } from './executors/capabilities.mjs';
 import { loadDelegationConfig, resolveRoute } from './delegation-config.mjs';
 import { defaultConfiguration } from './orchestration.mjs';
 import { isoNow, readJobFile } from './state.mjs';
@@ -86,6 +87,17 @@ function supervisorOptions(config, supplied = {}) {
   };
 }
 
+// Planner, worker and reviewer turns are validated against JSON schemas, so reject a route that cannot
+// produce structured output before any record or worktree is created.
+function requireStructuredRoles(config, settings) {
+  for (const role of [settings.plannerRole, settings.executorRole, settings.reviewerRole]) {
+    const route = resolveCliRoute(config, role);
+    if (!executorCapabilities(route.executor, route.integration).structuredOutput) {
+      throw new Error(`supervisor role ${role} routes to ${route.executor}/${route.integration}, which has no schema-constrained output; map it to a codex or claude role`);
+    }
+  }
+}
+
 function resolveCliRoute(config, role) {
   const initial = resolveRoute(config, { role });
   return resolveRoute(config, {
@@ -94,6 +106,7 @@ function resolveCliRoute(config, role) {
     model: initial.model,
     effort: initial.effort,
     agent: initial.agent,
+    advisor: initial.advisor,
     'timeout-ms': initial['timeout-ms'],
   });
 }
@@ -176,6 +189,7 @@ async function runExecutor({ root, cwd, env, config, role, kind, prompt, context
     model: route.model,
     effort: route.effort,
     agent: route.agent,
+    advisor: route.advisor,
     readOnly,
     approveAll: approveAll === true && !readOnly,
     conversation,
@@ -318,6 +332,7 @@ export async function runSupervisor({ cwd, env = process.env, task, configFile, 
   const root = taskRoot(cwd, env);
   let loaded = effectiveConfig(cwd, configFile, options.host ?? 'codex');
   let settings = supervisorOptions(loaded, options);
+  requireStructuredRoles(loaded, settings);
   let record;
   if (resumeId !== null) {
     record = resolveSupervisor(root, resumeId);
@@ -325,6 +340,7 @@ export async function runSupervisor({ cwd, env = process.env, task, configFile, 
     if (TERMINAL.has(record.status)) return record;
     loaded = effectiveConfig(cwd, record.configPath ?? configFile, options.host ?? 'codex');
     settings = supervisorOptions(loaded, options);
+    requireStructuredRoles(loaded, settings);
   } else {
     record = createSupervisorRecord({ cwd, task: task.trim(), config: loaded, options: settings, sessionId: taskSession(env) });
     saveSupervisor(root, record);

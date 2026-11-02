@@ -100,6 +100,13 @@ test('review permissions remain restrictive even with explicit approval', () => 
   assert.ok(!buildClaudeArgs(input).includes('--dangerously-skip-permissions'));
 });
 
+test('approved Codex writers bypass approvals without also passing -a, which Codex rejects', () => {
+  const args = buildCodexArgs({ options: { approveAll: true } });
+  assert.ok(args.includes('--dangerously-bypass-approvals-and-sandbox'));
+  assert.ok(!args.includes('-a'));
+  assert.deepEqual(buildCodexArgs({ options: {} }).slice(0, 4), ['-a', 'never', '--sandbox', 'read-only']);
+});
+
 test('invalid configuration and conflicting flags fail before execution', async () => {
   const c = context();
   assert.equal(await runMain(['task', '--resume', '--fresh', 'hello'], c), 1);

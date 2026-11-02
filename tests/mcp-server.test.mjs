@@ -50,8 +50,8 @@ test('an MCP client sees the delegation tools, host instructions and the session
     assert.equal(capabilities.sessionId, 'mcp-parent');
     assert.equal(capabilities.project, c.cwd);
     assert.equal(capabilities.stateRoot, taskRoot(c.cwd, c.env));
-    assert.equal(capabilities.config.defaultExecutor, 'agy');
-    assert.equal(capabilities.providers.length, 3);
+    assert.equal(capabilities.config.defaultExecutor, 'opencode');
+    assert.equal(capabilities.providers.length, 4);
   } finally { await client.close(); }
 });
 
