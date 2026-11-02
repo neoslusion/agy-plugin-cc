@@ -87,6 +87,14 @@ function supervisorOptions(config, supplied = {}) {
   };
 }
 
+// Verification commands run with the user's privileges and come from project configuration.
+// Treat them as executable code: no worker, worktree or check starts before explicit approval.
+function requireCheckApproval(settings, supplied) {
+  if (settings.verifyCommands.length && supplied.approveAll !== true) {
+    throw new Error('supervisor.verifyCommands execute project-configured commands; pass --approve-all to authorize them');
+  }
+}
+
 // Planner, worker and reviewer turns are validated against JSON schemas, so reject a route that cannot
 // produce structured output before any record or worktree is created.
 function requireStructuredRoles(config, settings) {
@@ -341,7 +349,9 @@ export async function runSupervisor({ cwd, env = process.env, task, configFile, 
     loaded = effectiveConfig(cwd, record.configPath ?? configFile, options.host ?? 'codex');
     settings = supervisorOptions(loaded, options);
     requireStructuredRoles(loaded, settings);
+    requireCheckApproval(settings, options);
   } else {
+    requireCheckApproval(settings, options);
     record = createSupervisorRecord({ cwd, task: task.trim(), config: loaded, options: settings, sessionId: taskSession(env) });
     saveSupervisor(root, record);
   }

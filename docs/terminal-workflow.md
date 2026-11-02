@@ -44,7 +44,7 @@ For an active task, use `steer` or `interrupt` only when its interface advertise
 
 ## Acceptance and limits
 
-Generic delegates work in the supplied directory and do not automatically isolate writers or integrate patches. Coordinate file ownership in the parent. Use `run` when you need the existing supervisor's bounded plan, isolated worktrees, typed results, independent review and checks before central integration. Completing a worker task is not proof that the user's acceptance criteria passed.
+Generic delegates work in the supplied directory and do not automatically isolate writers or integrate patches. Coordinate file ownership in the parent. Use `run` when you need the existing supervisor's bounded plan, isolated worktrees, typed results, independent review and checks before central integration. Completing a worker task is not proof that the user's acceptance criteria passed. Configured `supervisor.verifyCommands` are executable project configuration: `run` requires `--approve-all` when they are present. See [security and trust boundaries](security.md).
 
 Completion hooks report parent and owned-child events at the next user prompt; they do not wake an idle session. In Claude Code, run `wait TASK_ID --wake` (returned as `wakeCommand` by the MCP tools) as a background Bash command instead: it returns when the task has a result, needs input, or lost its worker, and the host re-invokes the parent on exit. Codex has no equivalent here, so use bounded waits during active orchestration. The optional monitor remains read-only advice after a rejected evidence gate; event watching never calls a monitor model.
 

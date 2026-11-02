@@ -284,6 +284,15 @@ test('monitor runs only after a failed evidence gate and cannot bypass rejection
   assert.match(readTaskContext(c.root, record.context.id).payload.evidence[0], /Monitor recommendation/);
 });
 
+test('configured verification commands require explicit approval', async () => {
+  const cwd = repository();
+  config(cwd);
+  const c = context(cwd);
+  assert.equal(await runMain(['run', 'Implement the requested correction', '--json'], c), 1);
+  assert.match(c.errors.join(''), /verifyCommands execute project-configured commands; pass --approve-all/);
+  assert.deepEqual(listSupervisors(c.root), []);
+});
+
 test('supervisor rejects a role without structured output before creating a run', async () => {
   const cwd = makeTempDir('supervisor-structured-');
   writeFileSync(join(cwd, '.agent-delegation.json'), JSON.stringify({ supervisor: { executorRole: 'executor' }, roles: { executor: { executor: 'opencode' } } }));

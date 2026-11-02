@@ -1,12 +1,17 @@
 # NOTICE
 
-This plugin wraps the official Google Antigravity CLI (`agy`) and performs no
-OAuth of its own and stores no credentials. Authentication is handled entirely
-by the `agy` binary (Google sign-in / AI credits).
+Agent Delegation orchestrates locally installed Codex, Claude Code, OpenCode and
+Google Antigravity (`agy`) CLIs. It performs no OAuth of its own and stores no
+credentials; each CLI authenticates itself.
 
-- The plugin's job logs may contain the prompts delegated to agy and agy's
-  outputs. Do not delegate prompts that contain secrets.
+- Job logs, prompts, transcripts and context snapshots may contain project code
+  and task text. They are stored locally and are not encrypted. Do not delegate
+  prompts that contain secrets.
+- `supervisor.verifyCommands` are project-configured commands executed with your
+  privileges; `run` requires `--approve-all` before they can run.
 - The stop-review gate is a best-effort heuristic and fails OPEN (allows
-  stopping) on any timeout or parse error.
-- Review runs are read-only: the companion never passes
+  stopping) on any timeout or parse error. It applies to the legacy agy plugin.
+- The legacy agy review commands run read-only; the companion never passes
   `--dangerously-skip-permissions` for review/adversarial-review jobs.
+- The bundled Claude Agent SDK is redistributed under its own license; see
+  `plugins/agent-delegation/scripts/vendor/claude-agent-sdk-LICENSE.md`.
