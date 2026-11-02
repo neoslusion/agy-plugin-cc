@@ -406,4 +406,5 @@ export const agyExecutor = {
   cancel: cancelJob,
   isPermissionDenied,
   permissionDeniedHint,
+  integrations: ['cli', 'acp'],
 };

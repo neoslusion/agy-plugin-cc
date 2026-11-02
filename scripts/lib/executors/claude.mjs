@@ -63,4 +63,4 @@ export async function runTask({ job = {}, prompt, options = {}, onProgress = () 
   return { ...result, exitCode: output.exitCode, notice: [output.stderr.trim(), advisorNotice].filter(Boolean).join('\n') || null };
 }
 
-export const claudeExecutor = { id: 'claude', binary: 'claude', preflight: opts => cliPreflight('claude', opts), runTask, collectContext, cancel: terminateProcess };
+export const claudeExecutor = { id: 'claude', binary: 'claude', integrations: ['cli', 'agent-sdk'], preflight: opts => cliPreflight('claude', opts), runTask, collectContext, cancel: terminateProcess };

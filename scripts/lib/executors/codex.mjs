@@ -76,4 +76,4 @@ export async function runTask({ job = {}, prompt, options = {}, onProgress = () 
   }
 }
 
-export const codexExecutor = { id: 'codex', binary: 'codex', preflight: opts => cliPreflight('codex', opts), runTask, collectContext, cancel: terminateProcess };
+export const codexExecutor = { id: 'codex', binary: 'codex', integrations: ['cli', 'app-server'], preflight: opts => cliPreflight('codex', opts), runTask, collectContext, cancel: terminateProcess };

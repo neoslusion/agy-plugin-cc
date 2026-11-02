@@ -96,6 +96,15 @@ test('registry exposes the agy adapter', () => {
   ]);
 });
 
+test('registry returns independent views instead of mutating the registered adapter', () => {
+  const first = get('codex');
+  const rich = get('codex', 'app-server');
+  assert.equal(rich.capabilities.integration, 'app-server');
+  assert.equal(first.capabilities.integration, 'cli', 'a later rich lookup must not rewrite an earlier CLI view');
+  assert.notEqual(first, get('codex'));
+  assert.deepEqual(get('codex').integrations, ['cli', 'app-server']);
+});
+
 test('isPermissionDenied covers envelope errors, notices, and responses', () => {
   assert.equal(isPermissionDenied({ error: 'permission check failed for command "pwd; ls": user denied permission to run command' }), true);
   assert.equal(isPermissionDenied({ notice: 'Print mode: soft-denying tool confirmation "RunCommand" at step 3' }), true);

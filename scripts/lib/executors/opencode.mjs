@@ -69,4 +69,4 @@ export async function runTask({ job = {}, prompt, options = {}, onProgress = () 
   return { ...result, exitCode: output.exitCode, notice: output.stderr.trim() || null };
 }
 
-export const opencodeExecutor = { id: 'opencode', binary: 'opencode', preflight: opts => cliPreflight('opencode', opts), runTask, collectContext, cancel: terminateProcess };
+export const opencodeExecutor = { id: 'opencode', binary: 'opencode', integrations: ['cli'], preflight: opts => cliPreflight('opencode', opts), runTask, collectContext, cancel: terminateProcess };

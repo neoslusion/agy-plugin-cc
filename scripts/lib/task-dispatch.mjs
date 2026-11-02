@@ -16,18 +16,142 @@ import { visibleTasks, selectTask, waitForTask, renderTaskSnapshot, TERMINAL_TAS
 import { waitBudget } from './terminal-tasks.mjs';
 import { advisorExecution } from './advisor.mjs';
 
-const worker = resolve(import.meta.dirname, '../task-worker.mjs');
+const WORKER = resolve(import.meta.dirname, '../task-worker.mjs');
+const ROUTE_FIELDS = ['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms', 'instructions', 'readOnly', 'purpose'];
+const TURN_FIELDS = ['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms'];
+const EMPTY_PAYLOAD = { acceptanceCriteria: [], decisions: [], ownership: {}, evidence: [], blockers: [] };
+
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const bounded = (value, max = 8192) => String(value ?? '').slice(0, max);
+const pick = (source, keys) => Object.fromEntries(keys.filter(key => source[key] !== undefined).map(key => [key, source[key]]));
 
 function dispatchRoute(config, opts, previous) {
   const sameProvider = previous && (!opts.executor || opts.executor === previous.executor) && (!opts.integration || opts.integration === (previous.integration ?? 'cli')) && (!opts.role || opts.role === previous.role);
   const inherited = previous ? { executor: previous.executor, integration: previous.integration ?? 'cli', model: previous.model ?? undefined, ...previous.execution } : {};
   return resolveRoute(config, {
-    ...(sameProvider ? Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms'].filter(key => inherited[key] !== undefined).map(key => [key, inherited[key]])) : {}),
+    ...(sameProvider ? pick(inherited, TURN_FIELDS) : {}),
     ...(previous && !opts.role && previous.role ? { role: previous.role } : {}),
     ...(previous && (!opts.role || opts.role === previous.role) ? { executor: opts.executor ?? previous.executor } : {}),
     ...opts,
+  });
+}
+
+function executionFor(config, route, { approveAll, conversation, jsonSchema }) {
+  return {
+    ...pick(route, ROUTE_FIELDS),
+    json: true,
+    'approve-all': approveAll === true && !route.readOnly,
+    conversation,
+    'json-schema': jsonSchema,
+    ...advisorExecution(config, route),
+  };
+}
+
+function handoffEvidence(previous) {
+  return [
+    `Handoff from ${previous.id} (${previous.executor}/${previous.integration ?? 'cli'}), status ${previous.status}: ${bounded(previous.result?.response)}`,
+    `Changed files: ${bounded(JSON.stringify(previous.result?.changedFiles ?? []))}`,
+    `Checks: ${bounded(JSON.stringify(previous.result?.structuredOutput?.checks ?? []))}`,
+  ].join('\n');
+}
+
+function handoffBlockers(previous) {
+  return [
+    ...(previous.result?.structuredOutput?.blockers ?? []).filter(item => typeof item === 'string').slice(0, 16).map(item => bounded(item)),
+    ...(previous.errorMessage ? [bounded(previous.errorMessage)] : []),
+  ];
+}
+
+// A follow-up keeps the previous payload and appends its outcome; a provider switch
+// builds the portable handoff from the same snapshot instead of a native session.
+function buildContext(root, previous, prompt, snapshot) {
+  const payload = snapshot?.payload ?? { objective: previous?.assignment ?? prompt, ...EMPTY_PAYLOAD };
+  return createTaskContext(root, {
+    ...payload,
+    objective: bounded(payload.objective, 16384),
+    ...(previous ? {
+      evidence: [...(payload.evidence ?? []).slice(-16), handoffEvidence(previous), `New assignment: ${bounded(prompt)}`],
+      blockers: [...(payload.blockers ?? []).slice(-16), ...handoffBlockers(previous)],
+    } : {}),
+  });
+}
+
+function startWorker({ root, record, cwd, env, sessionId }) {
+  const log = openSync(record.logFile, 'a');
+  let child;
+  try {
+    child = spawn(process.execPath, [WORKER, root, record.id], {
+      cwd,
+      env: { ...env, AGENT_SESSION_ID: sessionId, AGENT_DELEGATION_WORKER: '1' },
+      stdio: ['ignore', log, log],
+      detached: true,
+      windowsHide: true,
+      shell: false,
+    });
+    const spawned = new Promise((resolveSpawn, reject) => {
+      child.once('spawn', resolveSpawn);
+      child.once('error', reject);
+    });
+    spawned.catch(() => {});
+    record.pid = child.pid;
+    record.workerPid = child.pid;
+    record.processIdentity = { pid: child.pid, binary: process.execPath, startedAt: isoNow() };
+    // Publish the queued event before the record allows the worker to start.
+    appendTaskEvent(root, record.id, 'task.queued', {
+      executor: record.executor,
+      integration: record.integration,
+      role: record.role,
+      context: record.context,
+      previousTaskId: record.previousTaskId,
+    });
+    upsertJob(root, record);
+    return { child, spawned };
+  } catch (error) {
+    try { child?.kill(); } catch {}
+    throw error;
+  } finally {
+    closeSync(log);
+  }
+}
+
+function publishTask({ root, id, identity, sessionId, route, prompt, cwd, env, execution, previous, sameSession, opts, adapter, takeContext }) {
+  return withArtifactLock(join(root, 'dispatch', id), () => {
+    const existing = readJobFile(root, id);
+    if (existing) {
+      if (existing.dispatchFingerprint !== identity) throw new Error('Request ID was already used for a different assignment or route');
+      return { record: existing, created: false, child: null, spawned: null };
+    }
+    const activeTurn = sameSession && visibleTasks(root, sessionId).some(task => !TERMINAL_TASKS.has(task.status)
+      && task.executor === route.executor
+      && (task.integration ?? 'cli') === route.integration
+      && (task.conversationId === previous.conversationId || task.execution?.conversation === previous.conversationId));
+    if (activeTurn) throw new Error('Native session already has an active turn; wait before following up');
+
+    const snapshot = takeContext();
+    Object.assign(execution, { 'context-id': snapshot.id, 'context-revision': String(snapshot.revision) });
+    const record = createJobRecord({
+      executor: route.executor,
+      kind: 'task',
+      request: prompt,
+      sessionId,
+      workspaceRoot: cwd,
+      overrides: {
+        id,
+        role: route.role ?? null,
+        model: route.model ?? null,
+        integration: route.integration,
+        capabilities: adapter.capabilities,
+        jobClass: route.readOnly ? 'review' : 'task',
+        write: !route.readOnly,
+        context: contextReference(snapshot),
+        previousTaskId: previous?.id ?? null,
+        requestId: opts['request-id'] ?? null,
+        dispatchFingerprint: identity,
+        execution,
+      },
+    });
+    createJobLogFile(root, record);
+    return { record, created: true, ...startWorker({ root, record, cwd, env, sessionId }) };
   });
 }
 
@@ -64,55 +188,23 @@ export async function runDispatch(command, argv, context = {}) {
     const sameSession = previous && !opts.fresh && previous.executor === route.executor && (previous.integration ?? 'cli') === route.integration;
     if (sameSession && !previous.conversationId) throw new Error('Previous task has no native session; use --fresh for an explicit handoff');
     let snapshot = opts['context-id'] ? readTaskContext(root, opts['context-id'], opts['context-revision'] === undefined ? null : Number(opts['context-revision'])) : previous?.context ? readTaskContext(root, previous.context.id, previous.context.revision) : null;
-    const execution = { ...Object.fromEntries(['role', 'executor', 'integration', 'model', 'effort', 'agent', 'advisor', 'timeout-ms', 'instructions', 'readOnly', 'purpose'].filter(key => route[key] !== undefined).map(key => [key, route[key]])), json: true, 'approve-all': opts['approve-all'] === true && !route.readOnly,
-      conversation: sameSession ? previous.conversationId : null, 'json-schema': opts['json-schema'],
-      ...(snapshot ? { 'context-id': snapshot.id, 'context-revision': String(snapshot.revision) } : {}),
-      ...advisorExecution(config, route),
-    };
+    const execution = executionFor(config, route, { approveAll: opts['approve-all'], conversation: sameSession ? previous.conversationId : null, jsonSchema: opts['json-schema'] });
     const identity = fingerprint({ prompt, execution, previousTaskId: previous?.id ?? null, context: snapshot ? contextReference(snapshot) : null });
     const id = opts['request-id'] ? `task-${fingerprint([sessionId, opts['request-id']]).slice(0, 24)}` : generateJobId('task');
-    let child, spawned, created = false;
-    const publish = () => withArtifactLock(join(root, 'dispatch', id), () => {
-      const existing = readJobFile(root, id);
-      if (existing) {
-        if (existing.dispatchFingerprint !== identity) throw new Error('Request ID was already used for a different assignment or route');
-        return existing;
-      }
-      if (sameSession && visibleTasks(root, sessionId).some(task => !TERMINAL_TASKS.has(task.status) && task.executor === route.executor && (task.integration ?? 'cli') === route.integration && (task.conversationId === previous.conversationId || task.execution?.conversation === previous.conversationId))) throw new Error('Native session already has an active turn; wait before following up');
-      if (!snapshot || (previous && !sameSession && !opts['context-id'])) {
-        const payload = snapshot?.payload ?? { objective: previous?.assignment ?? prompt, acceptanceCriteria: [], decisions: [], ownership: {}, evidence: [], blockers: [] };
-        snapshot = createTaskContext(root, { ...payload, objective: bounded(payload.objective, 16384),
-          ...(previous ? { evidence: [...(payload.evidence ?? []).slice(-16), `Handoff from ${previous.id} (${previous.executor}/${previous.integration ?? 'cli'}), status ${previous.status}: ${bounded(previous.result?.response)}\nChanged files: ${bounded(JSON.stringify(previous.result?.changedFiles ?? []))}\nChecks: ${bounded(JSON.stringify(previous.result?.structuredOutput?.checks ?? []))}`, `New assignment: ${bounded(prompt)}`], blockers: [...(payload.blockers ?? []).slice(-16), ...(previous.result?.structuredOutput?.blockers ?? []).filter(item => typeof item === 'string').slice(0, 16).map(item => bounded(item)), ...(previous.errorMessage ? [bounded(previous.errorMessage)] : [])] } : {}),
-        });
-      }
-      Object.assign(execution, { 'context-id': snapshot.id, 'context-revision': String(snapshot.revision) });
-      const record = createJobRecord({ executor: route.executor, kind: 'task', request: prompt, sessionId, workspaceRoot: cwd, overrides: {
-        id, role: route.role ?? null, model: route.model ?? null, integration: route.integration, capabilities: adapter.capabilities,
-        jobClass: route.readOnly ? 'review' : 'task', write: !route.readOnly,
-        context: contextReference(snapshot), previousTaskId: previous?.id ?? null,
-        requestId: opts['request-id'] ?? null, dispatchFingerprint: identity, execution,
-      } });
-      createJobLogFile(root, record);
-      const log = openSync(record.logFile, 'a');
-      try {
-        child = spawn(process.execPath, [worker, root, id], { cwd, env: { ...env, AGENT_SESSION_ID: sessionId, AGENT_DELEGATION_WORKER: '1' }, stdio: ['ignore', log, log], detached: true, windowsHide: true, shell: false });
-        spawned = new Promise((resolveSpawn, reject) => { child.once('spawn', resolveSpawn); child.once('error', reject); });
-        spawned.catch(() => {});
-        record.pid = child.pid;
-        record.workerPid = child.pid;
-        record.processIdentity = { pid: child.pid, binary: process.execPath, startedAt: isoNow() };
-        // Publish the queued event before the record allows the worker to start.
-        appendTaskEvent(root, id, 'task.queued', { executor: record.executor, integration: record.integration, role: record.role, context: record.context, previousTaskId: record.previousTaskId });
-        upsertJob(root, record);
-        created = true;
-        return record;
-      } catch (error) { child?.kill(); throw error; }
-      finally { closeSync(log); }
-    });
-    const job = sameSession ? withArtifactLock(join(root, 'conversations', fingerprint([route.executor, route.integration, previous.conversationId])), publish) : publish();
+    const takeContext = () => {
+      if (!snapshot || (previous && !sameSession && !opts['context-id'])) snapshot = buildContext(root, previous, prompt, snapshot);
+      return snapshot;
+    };
+    const publish = () => publishTask({ root, id, identity, sessionId, route, prompt, cwd, env, execution, previous, sameSession, opts, adapter, takeContext });
+    const published = sameSession
+      ? withArtifactLock(join(root, 'conversations', fingerprint([route.executor, route.integration, previous.conversationId])), publish)
+      : publish();
+    const { record: job, child, spawned, created } = published;
     if (child) {
-      try { await spawned; child.unref(); }
-      catch (error) {
+      try {
+        await spawned;
+        child.unref();
+      } catch (error) {
         mutateJob(root, id, current => ({ ...current, status: 'failed', phase: 'failed', completedAt: isoNow(), errorMessage: error.message, pid: null }));
         appendTaskEvent(root, id, 'task.failed', { error: error.message });
         throw error;
@@ -126,5 +218,8 @@ export async function runDispatch(command, argv, context = {}) {
     const receipt = { taskId: id, status: job.status, created, executor: job.executor, integration: job.integration, role: job.role, context: job.context, previousTaskId: job.previousTaskId };
     out.write(opts.json ? JSON.stringify(receipt) + '\n' : `${created ? 'Delegated' : 'Existing task'} ${id} to ${job.role ?? job.executor} (${job.executor}/${job.integration}).\nUse tasks ${id}, wait ${id}, or watch ${id} with this parent session.\n`);
     return 0;
-  } catch (error) { err.write(`error: ${error.message}\n`); return 1; }
+  } catch (error) {
+    err.write(`error: ${error.message}\n`);
+    return 1;
+  }
 }
