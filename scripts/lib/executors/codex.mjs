@@ -28,6 +28,28 @@ export function buildCodexArgs({ job = {}, options = {} }) {
   return args;
 }
 
+export function createCodexStream() {
+  return {
+    result: { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] },
+    terminal: false,
+  };
+}
+
+// Interpret one documented `codex exec --json` event. Exported so recorded streams can
+// be replayed without spawning the CLI.
+export function applyCodexEvent(stream, event, onProgress = () => {}) {
+  const result = stream.result;
+  if (event.type === 'thread.started') result.conversationId = event.thread_id;
+  if (event.type === 'item.completed' && event.item?.type === 'agent_message') result.response = event.item.text ?? '';
+  if (event.type === 'item.started') onProgress({ type: 'tool', name: event.item?.type ?? 'working' });
+  if (event.type === 'item.completed' && event.item?.type === 'file_change') {
+    for (const change of event.item.changes ?? []) if (change.path) result.changedFiles.push(change.path);
+  }
+  if (event.type === 'turn.completed') { stream.terminal = true; result.status = 'completed'; result.usage = event.usage ?? null; }
+  if (event.type === 'turn.failed') { stream.terminal = true; result.status = 'failed'; result.error = event.error?.message ?? 'Codex turn failed'; }
+  return stream;
+}
+
 export async function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, ...handlers }, { cwd, env = process.env } = {}) {
   let schemaDir;
   let schemaPath;
@@ -46,23 +68,16 @@ export async function runTask({ job = {}, prompt, options = {}, onProgress = () 
       }
       opts.jsonSchema = schemaPath;
     }
-    const result = { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] };
-    let terminal = false;
+    const stream = createCodexStream();
     const output = await runCli({
       binary: options.binary ?? env.CODEX_BINARY ?? 'codex', args: buildCodexArgs({ job, options: opts }),
       prompt, cwd, env: { ...env, AGENT_DELEGATION_WORKER: '1' }, timeoutMs: options.timeoutMs, onProgress, ...handlers,
       onEvent(event) {
-        if (event.type === 'thread.started') result.conversationId = event.thread_id;
-        if (event.type === 'item.completed' && event.item?.type === 'agent_message') result.response = event.item.text ?? '';
-        if (event.type === 'item.started') onProgress({ type: 'tool', name: event.item?.type ?? 'working' });
-        if (event.type === 'item.completed' && event.item?.type === 'file_change') {
-          for (const change of event.item.changes ?? []) if (change.path) result.changedFiles.push(change.path);
-        }
-        if (event.type === 'turn.completed') { terminal = true; result.status = 'completed'; result.usage = event.usage ?? null; }
-        if (event.type === 'turn.failed') { terminal = true; result.status = 'failed'; result.error = event.error?.message ?? 'Codex turn failed'; }
+        applyCodexEvent(stream, event, onProgress);
       },
     });
-    if (output.error || output.exitCode !== 0 || !terminal) {
+    const result = stream.result;
+    if (output.error || output.exitCode !== 0 || !stream.terminal) {
       result.status = 'failed';
       result.error = output.error ?? result.error ?? (output.stderr.trim() || 'Codex exited without a completed turn');
     }

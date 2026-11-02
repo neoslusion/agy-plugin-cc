@@ -1,0 +1,7 @@
+{"type":"step_start","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_01Fixture","type":"step-start"}}
+{"type":"tool_use","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_02Fixture","type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"src/server.ts"},"metadata":{"metadata":{"files":[]}}}}}
+{"type":"tool_use","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_03Fixture","type":"tool","tool":"edit","state":{"status":"completed","input":{"path":"src/server.ts"},"metadata":{"metadata":{"files":[{"file":"src/server.ts","status":"modified"}]}}}}}
+{"type":"step_finish","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_04Fixture","type":"step-finish","cost":0,"tokens":{"input":12450,"output":180,"reasoning":64,"cache":{"read":11800,"write":0}}}}
+{"type":"step_start","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_05Fixture","type":"step-start"}}
+{"type":"text","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_06Fixture","type":"text","text":"Added input validation in src/server.ts."}}
+{"type":"step_finish","sessionID":"ses_2f1c9d4a8ffe7Q3m0lV6yB1xWp","part":{"id":"prt_07Fixture","type":"step-finish","cost":0,"tokens":{"input":260,"output":42,"reasoning":0,"cache":{"read":0,"write":0}}}}

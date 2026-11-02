@@ -24,42 +24,58 @@ export function buildClaudeArgs({ job = {}, options = {}, cwd = process.cwd() })
   return args;
 }
 
-export async function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, ...handlers }, { cwd, env = process.env } = {}) {
+export function createClaudeStream({ advisor = false } = {}) {
   const result = { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] };
-  let terminal = false, advisorOff = false;
-  if (options.advisor) result.advisorCalls = 0;
+  if (advisor) result.advisorCalls = 0;
+  return { result, terminal: false, advisorOff: false };
+}
+
+// Interpret one `claude --print --output-format stream-json` event. The advisor is a
+// server tool, so it arrives as a content block rather than a separate stream.
+export function applyClaudeEvent(stream, event, { advisor = false, onProgress = () => {} } = {}) {
+  const result = stream.result;
+  if (event.session_id) result.conversationId = event.session_id;
+  // Claude Code enables the advisor through a fetched feature flag; the variables that disable
+  // flag fetching also disable analytics, so a requested advisor is silently dropped.
+  if (event.type === 'system' && event.subtype === 'init' && advisor && event.analytics_disabled === true) stream.advisorOff = true;
+  if (event.type === 'assistant') {
+    for (const block of event.message?.content ?? []) {
+      if (block.type === 'tool_use') onProgress({ type: 'tool', name: block.name });
+      if (block.type === 'server_tool_use' && block.name === 'advisor') {
+        if (advisor) result.advisorCalls += 1;
+        onProgress({ type: 'tool', name: 'advisor' });
+      }
+    }
+  }
+  if (event.type === 'result') {
+    stream.terminal = true;
+    result.status = !event.is_error && event.subtype === 'success' ? 'completed' : 'failed';
+    result.response = event.result ?? '';
+    result.error = result.status === 'failed' ? (event.errors?.join('\n') || event.result || event.subtype || 'Claude turn failed') : null;
+    result.usage = event.usage ?? null;
+    result.structuredOutput = event.structured_output ?? null;
+  }
+  return stream;
+}
+
+export async function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, ...handlers }, { cwd, env = process.env } = {}) {
+  const stream = createClaudeStream({ advisor: Boolean(options.advisor) });
   const output = await runCli({
     binary: options.binary ?? env.CLAUDE_BINARY ?? 'claude', args: buildClaudeArgs({ job, options, cwd }),
     prompt, cwd, env: { ...env, AGENT_DELEGATION_WORKER: '1' }, timeoutMs: options.timeoutMs, onProgress, ...handlers,
     onEvent(event) {
-      if (event.session_id) result.conversationId = event.session_id;
-      // Claude Code enables the advisor through a fetched feature flag; the variables that disable
-      // flag fetching also disable analytics, so a requested advisor is silently dropped.
-      if (event.type === 'system' && event.subtype === 'init' && options.advisor && event.analytics_disabled === true) advisorOff = true;
-      if (event.type === 'assistant') {
-        for (const block of event.message?.content ?? []) {
-          if (block.type === 'tool_use') onProgress({ type: 'tool', name: block.name });
-          if (block.type === 'server_tool_use' && block.name === 'advisor') { result.advisorCalls += 1; onProgress({ type: 'tool', name: 'advisor' }); }
-        }
-      }
-      if (event.type === 'result') {
-        terminal = true;
-        result.status = !event.is_error && event.subtype === 'success' ? 'completed' : 'failed';
-        result.response = event.result ?? '';
-        result.error = result.status === 'failed' ? (event.errors?.join('\n') || event.result || event.subtype || 'Claude turn failed') : null;
-        result.usage = event.usage ?? null;
-        result.structuredOutput = event.structured_output ?? null;
-      }
+      applyClaudeEvent(stream, event, { advisor: Boolean(options.advisor), onProgress });
     },
   });
-  if (output.error || output.exitCode !== 0 || !terminal) {
+  const result = stream.result;
+  if (output.error || output.exitCode !== 0 || !stream.terminal) {
     result.status = 'failed';
     result.error = output.error ?? result.error ?? (output.stderr.trim() || 'Claude exited without a result');
   }
   if (options.jsonSchema && result.status === 'completed' && result.structuredOutput === null) {
     result.status = 'failed'; result.error = 'Claude returned no structured output';
   }
-  const advisorNotice = advisorOff ? `advisor ${options.advisor} is likely off: this Claude session disables feature-flag fetching (e.g. CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC or DISABLE_TELEMETRY)` : null;
+  const advisorNotice = stream.advisorOff ? `advisor ${options.advisor} is likely off: this Claude session disables feature-flag fetching (e.g. CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC or DISABLE_TELEMETRY)` : null;
   return { ...result, exitCode: output.exitCode, notice: [output.stderr.trim(), advisorNotice].filter(Boolean).join('\n') || null };
 }
 

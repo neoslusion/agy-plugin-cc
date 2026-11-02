@@ -33,38 +33,55 @@ function addUsage(total, tokens = {}, cost = 0) {
   return sum;
 }
 
+export function createOpencodeStream() {
+  return {
+    result: { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] },
+    text: [],
+    failure: null,
+    started: false,
+  };
+}
+
+// Interpret one `opencode run --format json` event. OpenCode has no terminal event, so
+// success is a clean exit after at least one started step.
+export function applyOpencodeEvent(stream, event, onProgress = () => {}) {
+  const result = stream.result;
+  if (event.sessionID) result.conversationId = event.sessionID;
+  if (event.type === 'step_start') stream.started = true;
+  const part = event.part ?? {};
+  if (event.type === 'text' && part.text) stream.text.push(part.text);
+  if (event.type === 'tool_use') {
+    onProgress({ type: 'tool', name: part.tool ?? 'tool' });
+    if (part.state?.status === 'completed') {
+      // Edit tools list their files in metadata; fall back to the input path for tools that do not.
+      const reported = part.state.metadata?.metadata?.files?.map(entry => entry.file).filter(Boolean) ?? [];
+      const input = part.state.input?.path ?? part.state.input?.filePath;
+      const files = reported.length ? reported : ['edit', 'write', 'patch'].includes(part.tool) && input ? [input] : [];
+      for (const file of files) if (!result.changedFiles.includes(file)) result.changedFiles.push(file);
+    }
+  }
+  // Only intermediate (tool-call) steps report step_finish, so usage can undercount the final answer.
+  if (event.type === 'step_finish') result.usage = addUsage(result.usage, part.tokens, part.cost);
+  if (event.type === 'error') stream.failure = event.error?.message ?? event.error?.type ?? 'OpenCode reported an error';
+  return stream;
+}
+
 export async function runTask({ job = {}, prompt, options = {}, onProgress = () => {}, ...handlers }, { cwd, env = process.env } = {}) {
-  const result = { status: 'failed', response: '', error: null, conversationId: null, usage: null, structuredOutput: null, changedFiles: [] };
-  let text = [], failure = null, started = false;
+  const stream = createOpencodeStream();
   // The prompt goes over stdin: assignments can exceed the Windows command-line limit.
   const output = await runCli({
     binary: options.binary ?? env.OPENCODE_BINARY ?? 'opencode', args: buildOpencodeArgs({ job, options }),
     // OpenCode takes its project directory from PWD, which a spawned process inherits unchanged.
     prompt, cwd, env: { ...env, ...advisorConfig(env, options.advisorServer), PWD: cwd ?? process.cwd(), AGENT_DELEGATION_WORKER: '1' }, timeoutMs: options.timeoutMs, onProgress, ...handlers,
     onEvent(event) {
-      if (event.sessionID) result.conversationId = event.sessionID;
-      if (event.type === 'step_start') started = true;
-      const part = event.part ?? {};
-      if (event.type === 'text' && part.text) text.push(part.text);
-      if (event.type === 'tool_use') {
-        onProgress({ type: 'tool', name: part.tool ?? 'tool' });
-        if (part.state?.status === 'completed') {
-          // Edit tools list their files in metadata; fall back to the input path for tools that do not.
-          const reported = part.state.metadata?.metadata?.files?.map(entry => entry.file).filter(Boolean) ?? [];
-          const input = part.state.input?.path ?? part.state.input?.filePath;
-          const files = reported.length ? reported : ['edit', 'write', 'patch'].includes(part.tool) && input ? [input] : [];
-          for (const file of files) if (!result.changedFiles.includes(file)) result.changedFiles.push(file);
-        }
-      }
-      // Only intermediate (tool-call) steps report step_finish, so usage can undercount the final answer.
-      if (event.type === 'step_finish') result.usage = addUsage(result.usage, part.tokens, part.cost);
-      if (event.type === 'error') failure = event.error?.message ?? event.error?.type ?? 'OpenCode reported an error';
+      applyOpencodeEvent(stream, event, onProgress);
     },
   });
-  result.response = text.join('\n');
+  const result = stream.result;
+  result.response = stream.text.join('\n');
   // OpenCode emits no terminal event; a clean exit after at least one step without an error event is success.
-  if (output.error || failure || output.exitCode !== 0 || !started) {
-    result.error = output.error ?? failure ?? (output.stderr.trim() || 'OpenCode exited without running a step');
+  if (output.error || stream.failure || output.exitCode !== 0 || !stream.started) {
+    result.error = output.error ?? stream.failure ?? (output.stderr.trim() || 'OpenCode exited without running a step');
   } else result.status = 'completed';
   return { ...result, exitCode: output.exitCode, notice: output.stderr.trim() || null };
 }
