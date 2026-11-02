@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agy-plugin-cc",
-  "description": "Use the local Antigravity (agy) CLI as an executor and code reviewer from Claude Code.",
+  "description": "Delegate bounded tasks to local Codex, Claude Code, OpenCode and agy CLIs while the host plans and verifies.",
   "owner": {
     "name": "ducle",
     "url": "https://github.com/ApuruPai"
@@ -15,7 +15,7 @@
     },
     {
       "name": "agent-delegation",
-      "description": "Delegate bounded tasks to local agy, Codex, and Claude Code CLIs while the host plans and verifies.",
+      "description": "Delegate bounded tasks to local Codex, Claude Code, OpenCode and agy CLIs while the host plans and verifies.",
       "source": "./plugins/agent-delegation",
       "category": "productivity"
     }

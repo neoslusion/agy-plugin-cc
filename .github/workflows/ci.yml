@@ -30,6 +30,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Version manifests agree
+        run: npm run check:versions
       - name: Installer and packaging sanity
         run: npm run package
       - name: Test

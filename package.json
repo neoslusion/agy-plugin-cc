@@ -10,7 +10,8 @@
   },
   "scripts": {
     "test": "node --import ./tests/setup.mjs --test tests/*.test.mjs",
-    "package": "node scripts/dev/package-delegation.mjs"
+    "package": "node scripts/dev/package-delegation.mjs",
+    "check:versions": "node scripts/dev/check-versions.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.288"

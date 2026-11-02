@@ -1,6 +1,6 @@
 {
   "name": "agent-delegation",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "Configure planner, advisor, executor, and reviewer roles for automatic orchestration in Codex and Claude Code.",
   "author": {
     "name": "ducle"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Agent Delegation",
     "shortDescription": "Configure roles, then prompt your coding host normally.",
-    "longDescription": "Choose planner, advisor, executor, and reviewer models. Use native host agents and installed agy, Codex, or Claude Code CLIs while the parent integrates and verifies.",
+    "longDescription": "Choose planner, advisor, executor, and reviewer models. Use native host agents and installed Codex, Claude Code, OpenCode, or agy CLIs while the parent integrates and verifies.",
     "developerName": "ducle",
     "category": "Productivity",
     "capabilities": [],

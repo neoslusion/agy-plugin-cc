@@ -1,6 +1,6 @@
 {
   "name": "agent-delegation",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "Configure planner, advisor, executor, and reviewer roles for automatic orchestration in Codex and Claude Code.",
   "author": { "name": "ducle" }
 }

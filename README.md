@@ -4,6 +4,8 @@ Terminal-first orchestration for your installed **OpenCode**, **Codex**, **Claud
 
 This extends the original agy plugin. Existing `/agy:*` commands and their installer remain available; see [legacy documentation](docs/legacy-agy.md).
 
+The repository and local marketplace keep the historical `agy-plugin-cc` name so existing installs keep resolving; the installable plugin and package are `agent-delegation`.
+
 ## Install
 
 Requirements: Node.js **22.18+** (or 24+), a supported host, and whichever executor CLIs you intend to use. Authenticate each CLI normally before delegation. Only installed executors you select are required.

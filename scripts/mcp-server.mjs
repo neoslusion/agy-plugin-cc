@@ -2,6 +2,7 @@
 // Stdio MCP server exposing terminal task delegation as host tools. Each tool is a thin call into the
 // runner, so validation, routing, approval and state stay in one place. It speaks the small
 // tools-only subset of MCP directly because the plugin cache must run without node_modules.
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { runMain } from './agent-runner.mjs';
@@ -12,7 +13,19 @@ import { readJobFile } from './lib/state.mjs';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const RUNNER = join(import.meta.dirname, 'agent-runner.mjs');
 
-const INSTRUCTIONS = `Delegate bounded work to the external agy, Codex or Claude Code CLI workers configured for this project. Tasks belong to this session.
+// The source checkout has package.json; a packaged plugin cache has only its host manifest.
+function pluginVersion() {
+  for (const file of [join(import.meta.dirname, '..', 'package.json'), join(import.meta.dirname, '..', '.codex-plugin', 'plugin.json')]) {
+    try {
+      const version = JSON.parse(readFileSync(file, 'utf8')).version;
+      if (version) return version;
+    } catch {}
+  }
+  return '0.0.0';
+}
+const VERSION = pluginVersion();
+
+const INSTRUCTIONS = `Delegate bounded work to the external Codex, Claude Code, OpenCode or agy CLI workers configured for this project. Tasks belong to this session.
 - Call delegation_capabilities once to see roles, executors and readiness. Handle small, localized work yourself.
 - A worker sees only your brief. Include the objective, relevant context, owned files, constraints and acceptance criteria.
 - After delegate_task or task_follow_up, start the returned wakeCommand as a background shell command (in Claude Code: Bash with run_in_background) and end your turn instead of polling. It exits when the task has a result, needs input, or lost its worker, and that exit re-invokes you.
@@ -127,7 +140,7 @@ function createServer({ env = process.env, write, advisor = null }) {
     try {
       if (method === 'initialize') {
         return reply(id, { protocolVersion: VERSIONS.includes(params?.protocolVersion) ? params.protocolVersion : VERSIONS[0], capabilities: { tools: {} },
-          serverInfo: { name: 'agent-delegation', version: '0.1.0' },
+          serverInfo: { name: 'agent-delegation', version: VERSION },
           instructions: advisor ? `Consult the advisor with ${ADVISOR_TOOL} when a stronger second opinion would help.` : worker ? 'You are a delegated worker. Perform the assigned task directly; delegation tools are disabled.' : INSTRUCTIONS });
       }
       if (method === 'ping') return reply(id, {});
