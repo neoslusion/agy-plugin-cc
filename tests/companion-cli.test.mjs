@@ -6,9 +6,9 @@ import { runMain } from '../scripts/agy-companion.mjs';
 import { makeTempDir } from '../scripts/lib/fs.mjs';
 import { resolveStateRoot, listJobs, readJobFile } from '../scripts/lib/state.mjs';
 import { workspaceSlug } from '../scripts/lib/workspace.mjs';
-import { get } from '../scripts/lib/executors/registry.mjs';
+import { agyExecutor } from '../scripts/lib/executors/agy.mjs';
 
-const executor = get('agy');
+const executor = agyExecutor;
 
 const realRunTask = executor.runTask;
 const realPreflight = executor.preflight;
@@ -38,11 +38,14 @@ function stubRunTask(overrides = {}) {
 function context(dataRoot, env = {}) {
   const outLines = [];
   const errLines = [];
+  const baseEnv = { ...process.env };
+  delete baseEnv.AGENT_DELEGATION_WORKER;
+  delete baseEnv.AGY_APPROVE_ALL;
   return {
     cwd: dataRoot,
     // CLAUDE_CONFIG_DIR keeps settings-scan approval hermetic regardless of the
     // real user-level Claude settings on this machine.
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGY_SESSION_ID: 'sess-1', CLAUDE_CONFIG_DIR: join(dataRoot, '.claude-config'), ...env },
+    env: { ...baseEnv, CLAUDE_PLUGIN_DATA: dataRoot, AGY_SESSION_ID: 'sess-1', CLAUDE_CONFIG_DIR: join(dataRoot, '.claude-config'), ...env },
     out: { write: (s) => outLines.push(s) },
     err: { write: (s) => errLines.push(s) },
     outLines,
