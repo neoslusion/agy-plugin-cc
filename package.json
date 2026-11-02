@@ -1,7 +1,13 @@
 {
   "name": "agent-delegation",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
+  "description": "Terminal-first orchestration for Codex, Claude Code, agy and OpenCode agents.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "test": "node --import ./tests/setup.mjs --test tests/*.test.mjs",
     "package": "node scripts/dev/package-delegation.mjs"
